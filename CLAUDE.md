@@ -1,0 +1,89 @@
+# CLAUDE.md
+
+## Project
+
+WebTurntable is a small motorized turntable (100 mm disk, 28BYJ-48 stepper, ULN2003 driver) controlled from a phone browser. The microcontroller runs an open Wi-Fi access point (`TURNTABLE`) and serves a web UI at `http://192.168.4.1`. The UI talks to the firmware over a WebSocket. The enclosure is FDM-printed in PLA; STLs are in `STL/`, and the originals are on MakerWorld (model 572900).
+
+This repo is a fork:
+
+- `upstream` (raceking37/WebTurntable) is the original project, including the README text and the v1 design.
+- `origin` (emanuel-gold/WebTurntable) is this fork, which carries the v2 work.
+
+Push to `origin` only when the user asks. Never push or open PRs against `upstream`.
+
+**Current state:** `code/` holds the v1 firmware for an ESP8266 (Wemos D1 mini). Planning for v2 is done; no v2 code exists yet.
+
+**In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
+
+## Starting a session
+
+1. Run `git pull` and check `git status`. Work may have happened on the other PC.
+2. Read the **Status** section of [docs/ROADMAP.md](docs/ROADMAP.md). It says what is done and what comes next.
+3. Check which tools this PC has before planning around them (see [Environment](#environment)).
+4. If the next task depends on an unanswered roadmap open question, ask the user first.
+
+As work lands, tick roadmap checkboxes, update its Status section, and record decisions in its Decisions table.
+
+## Layout
+
+- `code/Basic/Basic.ino`: minimal sketch that only spins the motor (no Wi-Fi).
+- `code/WebTurntable/`: the full firmware (an Arduino sketch folder).
+  - `WebTurntable.ino`: `setup()` and `loop()`.
+  - `turntable.{h,cpp}`: pins, the settings struct, and stepping (blocking `delayMicroseconds` inside `loop()`).
+  - `server.{h,cpp}`: Wi-Fi AP, AsyncWebServer with the WebSocket at `/ws`, and settings persistence (LittleFS, written after 750 ms idle).
+  - `data/`: the web UI served from LittleFS (`index.html`, `script.js`, `style.css`, `favicon.png`). Vanilla JS, no build step.
+- `STL/`: body, bottom plate, and `top plate` (which is the disk).
+- `docs/`: roadmap plus design and reference docs:
+  - [ROADMAP.md](docs/ROADMAP.md): phases, MVP scope, backlog, decisions, open questions.
+  - [FIRMWARE.md](docs/FIRMWARE.md): v2 architecture, motion engine, WebSocket protocol draft.
+  - [HARDWARE.md](docs/HARDWARE.md): v2 parts, ESP32 pin map, wiring, power.
+  - [ENCLOSURE.md](docs/ENCLOSURE.md): measured geometry of the current STLs and the v2 enclosure design.
+- `tools/stl_inspect.py`: numpy-only STL inspector (bounding boxes, hole finder, wall openings, PNG cross-sections).
+
+## Build and flash
+
+**v1 (ESP8266, the current code):**
+
+- Arduino IDE 2.x with the ESP8266 core.
+- Board "LOLIN(WEMOS) D1 R2 & mini", Flash Size "4MB (FS:3MB OTA:~512KB)".
+- Libraries: ESPAsyncWebServer and ESPAsyncTCP (ESP32Async), and Arduino_JSON.
+- Upload `data/` with the arduino-littlefs-upload plugin.
+
+**v2 (ESP32, planned):** see the Toolchain section of [docs/FIRMWARE.md](docs/FIRMWARE.md#toolchain).
+
+**Compiling and flashing:**
+
+- Compile-check with arduino-cli before asking the user to flash.
+- If only Arduino IDE 2 is installed, its bundled CLI is usually at `<IDE install dir>\resources\app\lib\backend\resources\arduino-cli.exe`.
+- Ask before uploading to a connected board.
+- The user does hardware testing (motor behavior, phone pairing). Don't claim a change works on the device until the user confirms it.
+
+## Environment
+
+- The user works from two Windows 11 PCs, and the tooling differs:
+  - One PC has no CAD software and no Arduino toolchain.
+  - The other has Blender and the Arduino tooling.
+- At session start, check what exists here (`arduino-cli version`, the Arduino IDE, `blender --version`, `python -c "import numpy"`) rather than assuming.
+- Keep the PCs in sync through `origin` on GitHub: pull at the start, and push when the user asks.
+- Claude's auto-memory is stored per machine and doesn't travel between PCs. Put anything durable in this file or in `docs/`.
+- **STL tools:**
+  - Use `python tools/stl_inspect.py` (needs only numpy) to measure STLs and render cross-sections to PNG, then view the PNGs.
+  - Use `manifold3d` for mesh booleans. All three original STLs are watertight. Install it in a `.venv`, not globally.
+  - Generate enclosure parts with Python scripts so they build on either PC. Where Blender is installed, use it for visual checks; it also runs headless (`blender --background --python script.py`) to render previews.
+- STL frame: origin at the top-center of the body deck, +Z up, in mm. The body spans z −21.5 to 0, the disk z 0 to 9.5, and the bottom plate z −23.5 to −21.
+
+## Conventions
+
+- Arduino C++ style:
+  - Allman braces.
+  - File-local helpers in an anonymous namespace.
+  - Globals prefixed `g_`.
+  - A one-line `//` comment above each function.
+  - Indentation is mixed (tabs in `server.cpp`, 4 spaces elsewhere); match the file you are editing.
+- Web UI stays dependency-free: no frameworks and no CDN, because the phone has no internet while it is on the turntable's AP.
+- Keep the flash-wear guard: persist settings only after an idle delay, never on every change.
+
+## Known issues (v1)
+
+- **Direction mismatch:** the UI direction slider sends `2` for CCW (`data/index.html`), but `RotateDirection::CCW == 3` (`turntable.h`). It only works because any value other than CW steps CCW, and the logs show `direction=UNKNOWN`. The v2 protocol fixes this.
+- **Uneven speed slider:** the slider is linear in step delay, so speed is very uneven across it. Half the slider covers about 1.5–2.7 RPM, and the top is about 16.4 RPM.

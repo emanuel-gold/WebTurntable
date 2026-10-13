@@ -6,3 +6,6 @@ build/
 *.hex
 *.elf
 *.map
+# Python (enclosure scripts, tools)
+.venv/
+__pycache__/
