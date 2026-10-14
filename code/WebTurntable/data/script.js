@@ -1,4 +1,4 @@
-var gateway = `ws://${window.location.hostname}/ws`;
+var gateway = `ws://${window.location.host}/ws`;
 var websocket;
 
 function initWebSocket() {

@@ -1,0 +1,13 @@
+{
+  "name": "webturntable-mock-server",
+  "private": true,
+  "description": "Mock turntable for developing the web UI without hardware. No dependencies.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.4"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  }
+}

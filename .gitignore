@@ -9,3 +9,6 @@ build/
 # Python (enclosure scripts, tools)
 .venv/
 __pycache__/
+
+# Playwright MCP output (UI checks against the mock server)
+.playwright-mcp/
