@@ -43,25 +43,31 @@ Keep the body, disk and bottom plate as they are, or lightly modified, and add o
 - **Outer shape:** Ø100, with the wall profile copied from the body's lower section (bore Ø96 plus the three boss lobes). It lines up with the body, and the original bottom plate seats in it unchanged.
 - **Top lip:** a 0.5 mm locating lip copied from the bottom plate, so the riser seats in the body exactly as the plate does.
 - **Bolt holes:** Ø3.4 through-holes at the three screw positions. The bottom-plate M3 bolts pass through the riser into the body's inserts, so each bolt gets longer by the riser height.
-- **USB opening:** a micro-USB opening at the DevKit's USB end. Most micro-USB plug housings need about 11 × 8 of clearance around the socket.
-- **Height H:** set by how the DevKit is wired ([roadmap open question 2](ROADMAP.md#open-questions)):
+- **USB opening:** a micro-USB opening at the DevKit's USB end, for power and programming (decided 2026-10-14). Most micro-USB plug housings need about 11 × 8 of clearance around the socket. A USB-C connector is a [backlog](ROADMAP.md#backlog-deferred) item and isn't designed in.
+- **Height H:** set by the DevKit stack with Dupont housings on its header pins (Dupont chosen 2026-10-14; see [HARDWARE.md](HARDWARE.md#dupont-harness)).
 
-| Wiring | Stack above the cradle | Riser H (est.) |
+| Layer | Height | Source |
 |---|---|---|
-| Dupont jumpers on the header pins (board flipped, pins up) | Board + module ≈ 5, header 2.5, Dupont housing ≈ 14, wire bend ≈ 4 | ≈ 27 |
-| Wires soldered to the pins (board components-up, pins down) | Pins ≈ 8.5 below, board + module ≈ 5 | ≈ 15 |
+| Top of the WROOM shield to the underside of the header spacer | ≈ 7 | 13 measured to the pin tips, minus ≈ 6 of exposed pin |
+| Dupont housing, from the spacer | ≈ 14 | Typical crimp housing; measure one |
+| Wire bend at the housing exit | ≈ 5 | |
+| **Stack** | **≈ 26** | Riser H ≈ 27 with clearance |
 
-These are estimates. Confirm them against the real board before printing.
+- **Orientation** (decide when designing the cradle):
+  - **Pins down on standoffs:** module and USB socket on top. The wires leave the housings downward and have to bend along the plate.
+  - **Flipped:** module down on short standoffs. The wires leave upward, toward the ULN2003 in the body. If the board sits under free space below the deck, the bend can use that space and the riser can be lower.
+- **Mounting holes:** four, one at each corner. Their centers are 23.37 apart across the width, about 2.5 in from each long edge (from the board's dimension drawing).
+- **Still needed:** the hole diameter, the lengthwise hole spacing (about 47 scaled from the drawing, but not dimensioned there), and one housing measurement: with a housing pushed onto a header pin, measure from the top of the WROOM shield to the end of the housing. See [roadmap open questions](ROADMAP.md#open-questions).
 
 ### Bottom plate v2
 
-- The original plate plus a DevKit cradle: edge rails or snap clips, since most 30-pin DevKits have no mounting holes.
-- Lay the DevKit along a chord with its USB end at the wall. At about 52 × 28 it fits anywhere inside Ø96.
+- The original plate plus a DevKit cradle. This board has mounting holes, so the cradle is screw posts or standoffs sized to them (measurements pending).
+- Lay the DevKit along a chord with its USB end at the wall. At 51.45 × 28.33 it fits anywhere inside Ø96.
 - Keep the antenna end (opposite the USB end) away from the motor and the wiring.
 
 ### Body v2 (optional tweaks)
 
-- Close the old USB-C slot with a patch, or reuse it for a USB-C power socket if [open question 3](ROADMAP.md#open-questions) goes that way.
+- Close the old USB-C slot with a patch (optional). A USB-C socket there is a [backlog](ROADMAP.md#backlog-deferred) item.
 - Reuse the LED hole for the status LED.
 - Add a zero index mark on the rim, matching a notch on the disk, for a manual Set zero.
 - Leave the D1 mini cradle in place; it doesn't get in the way.

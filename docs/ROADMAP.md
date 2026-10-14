@@ -8,14 +8,16 @@ Mark items `[x]` as they land.
 
 _Last updated 2026-10-14._
 
-- **Done:** planning, and Phase 0 except the open questions:
-  - master is tagged `v1-esp8266`, and v2 work happens on the `v2-esp32` branch.
+- **Done:** planning and Phase 0.
+  - v1 is frozen at tag `v1-esp8266`.
   - `code/WebTurntable/sketch.yaml` pins the ESP32 core and libraries. A test sketch compiles with the IDE-bundled arduino-cli.
   - The mock server in `tools/mock-server/` emulates the v1 protocol and has been checked in a browser against the current UI.
+  - `tools\flash.cmd` compiles and flashes with arduino-cli ([FLASHING.md](FLASHING.md)). Port detection and the web UI image build are tested; uploading to a board isn't, because no v2 firmware exists yet.
+  - The planning questions are answered (see Decisions, 2026-10-14).
 - **No v2 firmware yet.** `code/` is still the v1 ESP8266 firmware. Only the UI's WebSocket URL changed (`location.host`, for the mock).
-- **Next:** Phase 1. Ask the user [open question 6](#open-questions) (how to flash) before the first flash. Phase E is blocked on open questions 1–3 (board measurements, wiring method, USB/power), so ask the user before enclosure work.
+- **Next:** Phase 1. The first real flash also tests `tools\flash.cmd all` on hardware. Phase E can start once the two remaining [open questions](#open-questions) (mounting holes, Dupont stack height) are measured.
 - **Working style:**
-  - Do code work on a branch (for example `v2-esp32`) after tagging `v1-esp8266`.
+  - Work on master. v1 stays reproducible at tag `v1-esp8266`.
   - Commit per checklist item or logical step.
   - Update this Status section at the end of each session.
 
@@ -42,10 +44,11 @@ Homing would add a zero that survives power cycles and turning the disk by hand.
 
 ## Phase 0: Prep
 
-- [x] Tag master `v1-esp8266` before any v2 code change, so D1 mini builds stay reproducible. Do v2 work on a branch.
+- [x] Tag master `v1-esp8266` before any v2 code change, so D1 mini builds stay reproducible.
 - [x] Get arduino-cli working on the build PC (standalone, or the copy bundled with Arduino IDE 2) with ESP32 core 3.x and the v2 libraries ([FIRMWARE.md](FIRMWARE.md#toolchain)). Pin core and library versions in `sketch.yaml` so firmware can be compile-checked before flashing.
 - [x] Add a Node mock server (`tools/mock-server/`) that serves `data/` and fakes the WebSocket protocol, so the UI can be built and tested in a browser without hardware.
-- [ ] Answer the [open questions](#open-questions). Board measurements block the enclosure.
+- [x] Answer the planning questions: board variant, wiring method, USB/power, shutter test phone, the ESP8266 version, and how to flash (see Decisions, 2026-10-14).
+- [x] Flash script and instructions for arduino-cli: `tools\flash.cmd`, [FLASHING.md](FLASHING.md).
 
 ## Phase 1: ESP32 port (parity)
 
@@ -54,7 +57,7 @@ Same features as v1, running on the DevKit.
 - [ ] ESP32 includes (`WiFi.h`, `AsyncTCP.h`), the pin map from [HARDWARE.md](HARDWARE.md), and the partition scheme from [FIRMWARE.md](FIRMWARE.md#toolchain).
 - [ ] Fix the CCW direction mismatch (UI sends `2`, firmware expects `3`).
 - [ ] Status LED on the new pin, with the same error blink as v1.
-- [ ] Update the README build instructions for ESP32.
+- [ ] Update the README build instructions for ESP32, pointing to [FLASHING.md](FLASHING.md).
 
 **Done when:** the existing UI drives the motor on the DevKit, and settings survive a power cycle.
 
@@ -76,14 +79,14 @@ Same features as v1, running on the DevKit.
 
 - [ ] Back-and-forth (sweep): range or two end angles, speed, dwell at the ends, cycle count.
 - [ ] Stop conditions for spin and sweep: after N revolutions or cycles, or after T minutes. The UI shows what remains.
-- [ ] Presets: save the current mode and parameters under a name, then apply or delete it (about 10 slots).
+- [ ] Presets: save the current mode and parameters under a name, then apply or delete it (about 10 slots). Store them somewhere a web UI upload doesn't erase ([FIRMWARE.md](FIRMWARE.md#persistence)).
 - [ ] Persist the last-used state with the debounced write kept from v1.
 
 **Done when:** a saved preset still reproduces the same motion after a reboot.
 
 ## Phase 4: Bluetooth shutter and capture
 
-- [ ] Spike: pick a BLE HID library that works with arduino-esp32 3.x alongside the Wi-Fi AP and AsyncWebServer. Check flash and RAM fit, and test pairing with the phones from [open question 4](#open-questions).
+- [ ] Spike: pick a BLE HID library that works with arduino-esp32 3.x alongside the Wi-Fi AP and AsyncWebServer. Check flash and RAM fit, and test pairing with the iPhone 16 and its default Camera app.
 - [ ] Shutter: the device advertises as a BLE keyboard and sends Volume Up (key configurable). The UI shows paired/connected state and has a **Test shutter** button.
 - [ ] Photo capture: shots per revolution (or a step angle), settle delay before each shot, wait after each shot, direction, and return to start. The UI shows progress and estimated total time, with pause and cancel.
 - [ ] Video capture: shutter press, then the motion (one revolution, a sweep, or a timed spin), then a second press. Lead-in and lead-out delays.
@@ -94,7 +97,7 @@ Same features as v1, running on the DevKit.
 
 Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 
-- [ ] Measure the DevKit and choose the wiring method; together these set the riser height.
+- [ ] Measure the DevKit and choose the wiring method; together these set the riser height. Board measured and Dupont chosen (2026-10-14). Still needed: [open questions](#open-questions) 1–2.
 - [ ] Script and print the **riser ring**, a new part between the body and the bottom plate, with a micro-USB opening.
 - [ ] **Bottom plate v2:** the original plate plus a DevKit cradle.
 - [ ] **Body v2:** close the old USB-C slot (optional) and add a zero index mark. The existing LED hole is reused.
@@ -116,6 +119,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 - Capacitive touch controls (start/stop, direction) through the case wall.
 - Lighting control beyond NeoPixels. Examples: a switched or dimmed USB output for a USB light, or a desk lamp on a smart plug (which would need the turntable to join a Wi-Fi network). Needs exploration first.
 - IR shutter for dedicated cameras.
+- USB-C connector in place of the DevKit's micro-USB, for example a USB-C panel socket in the body's old USB-C slot. v2 ships with micro-USB through the riser.
 
 ## Scrapped
 
@@ -133,12 +137,17 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-14 | Toolchain pinned in the `esp32` profile of `code/WebTurntable/sketch.yaml`: core 3.3.12, ESP Async WebServer 3.12.1, Async TCP 3.5.0, ArduinoJson 7.4.3. The arduino-cli 0.34.0 bundled with IDE 2.2.1 is enough; no standalone install. |
 | 2026-10-14 | Keep the Minimal SPIFFS scheme even though core 3.x gives it 128 KB of file system, not 190 KB. If the UI outgrows it, use gzipped assets or a custom `partitions.csv`. |
 | 2026-10-14 | The mock server uses only Node built-ins, including a minimal WebSocket implementation, so neither PC needs `npm install`. It emulates v1 now; v2 comes in Phase 2. |
+| 2026-10-14 | Board: 30-pin DOIT DevKit V1, 51.45 × 28.33 mm, 13 mm from the pin tips to the top of the shield. Headers are soldered, and there are four corner mounting holes 23.37 apart across the width. |
+| 2026-10-14 | Wiring: crimped Dupont housings on the existing header pins of both the DevKit and the ULN2003 ([HARDWARE.md](HARDWARE.md#dupont-harness)). The riser is about 27 mm. |
+| 2026-10-14 | Power and programming go through the DevKit's micro-USB, via an opening in the riser. A USB-C connector is a backlog item. |
+| 2026-10-14 | The shutter test target is an iPhone 16 with the default Camera app. |
+| 2026-10-14 | The ESP8266 version is frozen at tag `v1-esp8266` and not maintained. |
+| 2026-10-14 | Flash v2 with arduino-cli through `tools\flash.cmd`, not the Arduino IDE, to avoid a second ~6.5 GB core install ([FLASHING.md](FLASHING.md)). |
+| 2026-10-14 | Single branch: v2 work goes on master. The `v2-esp32` branch was merged and deleted. |
 
 ## Open questions
 
-1. **DevKit variant:** 30-pin or 38-pin? Measure length × width, the height with headers, and whether the board has mounting holes.
-2. **Wiring:** Dupont jumpers (about a 27 mm riser) or wires soldered to the pins (about 15 mm)? See [ENCLOSURE.md](ENCLOSURE.md#riser-ring).
-3. **Power and USB:** micro-USB on the DevKit through the riser wall (recommended: power and programming, no extra parts), or a USB-C panel socket in the old slot for power only?
-4. **Shutter test phones:** which iPhone or Android models, and which camera apps?
-5. **ESP8266 version:** freeze it at the `v1-esp8266` tag (assumed), or keep it maintained alongside v2?
-6. **Flashing (needed for Phase 1):** flash from Arduino IDE 2, which needs the pinned core and libraries installed there too (another ~6.5 GB, and the IDE ignores `sketch.yaml`)? Or flash with `arduino-cli upload --profile esp32`, which reuses the profile install? With arduino-cli, the web UI goes up through a small script (mklittlefs and esptool, both included with the core) instead of the IDE plugin.
+The 2026-10-13 planning questions are answered (see Decisions, 2026-10-14). These measurements block Phase E:
+
+1. **DevKit mounting holes:** the hole diameter, and the center-to-center spacing along the board's length. The spacing across the width (23.37) is known from the dimension drawing. These set the cradle posts.
+2. **Dupont stack height:** with a crimped housing pushed onto a header pin, the distance from the top of the WROOM shield to the end of the housing. It sets the riser height ([ENCLOSURE.md](ENCLOSURE.md#riser-ring)).
