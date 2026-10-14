@@ -11,11 +11,9 @@ This repo is a fork:
 
 Push to `origin` only when the user asks. Never push or open PRs against `upstream`.
 
-**Current state:**
+Work directly on master; there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
 
-- v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266`.
-- v2 work happens on the `v2-esp32` branch.
-- Phase 0 tooling is in place (build profile and mock server), but `code/` still holds the v1 firmware.
+**Current state:** Phase 0 is done (build profile, flash script, mock server), but `code/` still holds the v1 firmware.
 
 **In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
 
@@ -43,25 +41,29 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
   - [FIRMWARE.md](docs/FIRMWARE.md): v2 architecture, motion engine, WebSocket protocol draft.
   - [HARDWARE.md](docs/HARDWARE.md): v2 parts, ESP32 pin map, wiring, power.
   - [ENCLOSURE.md](docs/ENCLOSURE.md): measured geometry of the current STLs and the v2 enclosure design.
+  - [FLASHING.md](docs/FLASHING.md): step-by-step flashing for the user, plus troubleshooting.
+- `tools/flash.cmd` and `tools/flash.ps1`: compile and flash v2 (firmware, web UI, serial monitor) with arduino-cli. The `.cmd` wrapper bypasses the PowerShell execution policy.
 - `tools/stl_inspect.py`: numpy-only STL inspector (bounding boxes, hole finder, wall openings, PNG cross-sections).
 - `tools/mock-server/`: dependency-free Node server that serves `data/` and emulates the firmware's WebSocket, for UI work without hardware ([README](tools/mock-server/README.md)).
 
 ## Build and flash
 
-**v1 (ESP8266, the current code):**
+**v1 (ESP8266, tag `v1-esp8266`):**
 
 - Arduino IDE 2.x with the ESP8266 core.
 - Board "LOLIN(WEMOS) D1 R2 & mini", Flash Size "4MB (FS:3MB OTA:~512KB)".
 - Libraries: ESPAsyncWebServer and ESPAsyncTCP (ESP32Async), and Arduino_JSON.
 - Upload `data/` with the arduino-littlefs-upload plugin.
 
-**v2 (ESP32):** see the Toolchain section of [docs/FIRMWARE.md](docs/FIRMWARE.md#toolchain). Versions are pinned in `code/WebTurntable/sketch.yaml`.
+**v2 (ESP32):** see the Toolchain section of [docs/FIRMWARE.md](docs/FIRMWARE.md#toolchain). Versions are pinned in `code/WebTurntable/sketch.yaml`. Flash with `tools\flash.cmd` ([docs/FLASHING.md](docs/FLASHING.md)), not the Arduino IDE.
 
 **Compiling and flashing:**
 
-- Compile-check with arduino-cli before asking the user to flash: `arduino-cli compile --profile esp32 code/WebTurntable`.
-- If only Arduino IDE 2 is installed, its bundled CLI is usually at `<IDE install dir>\resources\app\lib\backend\resources\arduino-cli.exe`.
+- Compile-check before asking the user to flash: `tools\flash.cmd check`, or `arduino-cli compile --profile esp32 code/WebTurntable`.
+- The script finds arduino-cli on PATH or bundled with Arduino IDE 2, usually at `<IDE install dir>\resources\app\lib\backend\resources\arduino-cli.exe`.
+- `-WhatIf` compiles and builds the web UI image without writing to a board. Use it to test the script.
 - Ask before uploading to a connected board.
+- If flashing steps change, update [docs/FLASHING.md](docs/FLASHING.md). The user wants it easy to follow.
 - The user does hardware testing (motor behavior, phone pairing). Don't claim a change works on the device until the user confirms it.
 
 ## Environment

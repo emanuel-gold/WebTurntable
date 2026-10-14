@@ -14,7 +14,7 @@ This describes the target firmware, not the current code. The v1 code is summari
   - ESPAsyncWebServer and AsyncTCP (both from ESP32Async; Library Manager names "ESP Async WebServer" and "Async TCP"). Several forks share these names, so check the author.
   - ArduinoJson 7, replacing Arduino_JSON because presets need nested objects.
   - A BLE HID library, chosen in the Phase 4 spike. NimBLE-based is likely, since it is lighter than Bluedroid.
-- Web UI upload: the arduino-littlefs-upload plugin (supports ESP32).
+- Flashing: `tools\flash.cmd`, which wraps arduino-cli, mklittlefs and esptool ([FLASHING.md](FLASHING.md)). The Arduino IDE and its LittleFS upload plugin aren't used for v2, because the IDE doesn't have the pinned core installed.
 
 ### Pinned versions (`sketch.yaml`)
 
@@ -35,7 +35,7 @@ arduino-cli compile --profile esp32 code/WebTurntable
 
 - On the first run, arduino-cli downloads the profile's core and libraries into `Arduino15/internal/`, separate from what the IDE has installed. That takes a few minutes and about 6.5 GB, since core 3.x ships prebuilt libraries for every ESP32 chip.
 - The arduino-cli 0.34.0 bundled with Arduino IDE 2.2.1 handles the profile (checked 2026-10-14), so a standalone arduino-cli is optional. See [CLAUDE.md](../CLAUDE.md#build-and-flash) for where the bundled copy lives.
-- Arduino IDE 2 ignores profiles. To build or flash from the IDE, install the same versions through the Boards Manager (add `https://espressif.github.io/arduino-esp32/package_esp32_index.json`) and the Library Manager.
+- Arduino IDE 2 ignores profiles, so v2 is built and flashed with arduino-cli only ([FLASHING.md](FLASHING.md)). Building from the IDE would mean installing the same versions there as well, another ~6.5 GB.
 - To bump a version, edit `sketch.yaml`, compile-check, and update the table above in the same commit.
 
 **Size baseline.** A test sketch using Wi-Fi AP, AsyncWebServer with a WebSocket, ArduinoJson, LittleFS, Preferences and a GPTimer compiles to 994 KB of flash (50% of the 1.875 MB app slot) and 46.6 KB of static RAM (14%). The BLE stack in Phase 4 comes on top of that. On the default partition scheme, this baseline alone would already use 76% of the app slot.
@@ -146,6 +146,8 @@ Directions are strings rather than enum numbers, which removes the v1 CW/OFF/CCW
 
 - **Last-used state:** stored in NVS (`Preferences`), written after 750 ms of idle as in v1. NVS is wear-levelled and suits small key-value data.
 - **Presets:** stored in `/presets.json` on LittleFS, about 10 entries.
+  - Uploading the web UI rewrites the whole LittleFS partition, so it would also erase the presets.
+  - Decide in Phase 3: keep presets in NVS instead (it survives both firmware and web UI uploads), or accept the loss and document it.
 - **Angle and zero:** not persisted (see [Angle control without homing](ROADMAP.md#angle-control-without-homing)).
 
 ## Web UI
