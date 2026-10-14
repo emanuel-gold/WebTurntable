@@ -11,7 +11,11 @@ This repo is a fork:
 
 Push to `origin` only when the user asks. Never push or open PRs against `upstream`.
 
-**Current state:** `code/` holds the v1 firmware for an ESP8266 (Wemos D1 mini). Planning for v2 is done; no v2 code exists yet.
+**Current state:**
+
+- v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266`.
+- v2 work happens on the `v2-esp32` branch.
+- Phase 0 tooling is in place (build profile and mock server), but `code/` still holds the v1 firmware.
 
 **In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
 
@@ -32,6 +36,7 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
   - `turntable.{h,cpp}`: pins, the settings struct, and stepping (blocking `delayMicroseconds` inside `loop()`).
   - `server.{h,cpp}`: Wi-Fi AP, AsyncWebServer with the WebSocket at `/ws`, and settings persistence (LittleFS, written after 750 ms idle).
   - `data/`: the web UI served from LittleFS (`index.html`, `script.js`, `style.css`, `favicon.png`). Vanilla JS, no build step.
+  - `sketch.yaml`: arduino-cli build profile `esp32` that pins the v2 core and library versions.
 - `STL/`: body, bottom plate, and `top plate` (which is the disk).
 - `docs/`: roadmap plus design and reference docs:
   - [ROADMAP.md](docs/ROADMAP.md): phases, MVP scope, backlog, decisions, open questions.
@@ -39,6 +44,7 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
   - [HARDWARE.md](docs/HARDWARE.md): v2 parts, ESP32 pin map, wiring, power.
   - [ENCLOSURE.md](docs/ENCLOSURE.md): measured geometry of the current STLs and the v2 enclosure design.
 - `tools/stl_inspect.py`: numpy-only STL inspector (bounding boxes, hole finder, wall openings, PNG cross-sections).
+- `tools/mock-server/`: dependency-free Node server that serves `data/` and emulates the firmware's WebSocket, for UI work without hardware ([README](tools/mock-server/README.md)).
 
 ## Build and flash
 
@@ -49,11 +55,11 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
 - Libraries: ESPAsyncWebServer and ESPAsyncTCP (ESP32Async), and Arduino_JSON.
 - Upload `data/` with the arduino-littlefs-upload plugin.
 
-**v2 (ESP32, planned):** see the Toolchain section of [docs/FIRMWARE.md](docs/FIRMWARE.md#toolchain).
+**v2 (ESP32):** see the Toolchain section of [docs/FIRMWARE.md](docs/FIRMWARE.md#toolchain). Versions are pinned in `code/WebTurntable/sketch.yaml`.
 
 **Compiling and flashing:**
 
-- Compile-check with arduino-cli before asking the user to flash.
+- Compile-check with arduino-cli before asking the user to flash: `arduino-cli compile --profile esp32 code/WebTurntable`.
 - If only Arduino IDE 2 is installed, its bundled CLI is usually at `<IDE install dir>\resources\app\lib\backend\resources\arduino-cli.exe`.
 - Ask before uploading to a connected board.
 - The user does hardware testing (motor behavior, phone pairing). Don't claim a change works on the device until the user confirms it.
@@ -63,7 +69,8 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
 - The user works from two Windows 11 PCs, and the tooling differs:
   - One PC has no CAD software and no Arduino toolchain.
   - The other has Blender and the Arduino tooling.
-- At session start, check what exists here (`arduino-cli version`, the Arduino IDE, `blender --version`, `python -c "import numpy"`) rather than assuming.
+- At session start, check what exists here (`arduino-cli version`, the Arduino IDE, `blender --version`, `python -c "import numpy"`, `node --version`) rather than assuming. Executables may be installed but not on PATH. On the build PC, the Arduino IDE (2.2.1) is under `%LOCALAPPDATA%\Programs\Arduino IDE` and Blender under `C:\Program Files\Blender Foundation\`.
+- The mock server's tests need Node 22.4 or newer, for the built-in WebSocket client.
 - Keep the PCs in sync through `origin` on GitHub: pull at the start, and push when the user asks.
 - Claude's auto-memory is stored per machine and doesn't travel between PCs. Put anything durable in this file or in `docs/`.
 - **STL tools:**

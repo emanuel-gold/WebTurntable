@@ -5,17 +5,40 @@ This describes the target firmware, not the current code. The v1 code is summari
 ## Toolchain
 
 - Arduino IDE 2.x or arduino-cli, with the ESP32 Arduino core 3.x.
-- Board: "ESP32 Dev Module" (or "DOIT ESP32 DEVKIT V1").
-- Partition scheme: **Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)**.
-  - Wi-Fi, Bluetooth and the web server together are likely too big for the default 1.2 MB app slot.
+- Board: "ESP32 Dev Module" (`esp32:esp32:esp32`). It has the full set of board menus; the "DOIT ESP32 DEVKIT V1" entry has fewer.
+- Partition scheme: **Minimal SPIFFS (1.9MB APP with OTA/128KB SPIFFS)** (`PartitionScheme=min_spiffs`).
+  - Wi-Fi, Bluetooth and the web server together are likely too big for the default 1.25 MB app slot.
   - This scheme also gives the two app slots that OTA needs (Phase 5).
-  - 190 KB is plenty for the web UI (about 21 KB) and presets. LittleFS uses this "spiffs" partition by default.
+  - In core 3.x the file system partition is 128 KB (`0x20000`), because the scheme now also reserves a 64 KB coredump partition. Older docs and labels say 190 KB. 128 KB is still enough for the web UI (about 21 KB now) and presets. If the v2 UI outgrows it, serve gzipped assets (AsyncWebServer picks up `.gz` files automatically) or add a custom `partitions.csv` to the sketch folder. LittleFS uses this "spiffs" partition by default.
 - Libraries:
-  - ESPAsyncWebServer and AsyncTCP (both from ESP32Async).
+  - ESPAsyncWebServer and AsyncTCP (both from ESP32Async; Library Manager names "ESP Async WebServer" and "Async TCP"). Several forks share these names, so check the author.
   - ArduinoJson 7, replacing Arduino_JSON because presets need nested objects.
   - A BLE HID library, chosen in the Phase 4 spike. NimBLE-based is likely, since it is lighter than Bluedroid.
 - Web UI upload: the arduino-littlefs-upload plugin (supports ESP32).
-- Pin the core and library versions in `sketch.yaml` so builds are reproducible.
+
+### Pinned versions (`sketch.yaml`)
+
+[`code/WebTurntable/sketch.yaml`](../code/WebTurntable/sketch.yaml) holds an arduino-cli build profile, `esp32`, that pins the board options, core and libraries:
+
+| Component | Version |
+|---|---|
+| esp32:esp32 core | 3.3.12 |
+| ESP Async WebServer | 3.12.1 |
+| Async TCP | 3.5.0 |
+| ArduinoJson | 7.4.3 |
+
+Compile check:
+
+```sh
+arduino-cli compile --profile esp32 code/WebTurntable
+```
+
+- On the first run, arduino-cli downloads the profile's core and libraries into `Arduino15/internal/`, separate from what the IDE has installed. That takes a few minutes and about 6.5 GB, since core 3.x ships prebuilt libraries for every ESP32 chip.
+- The arduino-cli 0.34.0 bundled with Arduino IDE 2.2.1 handles the profile (checked 2026-10-14), so a standalone arduino-cli is optional. See [CLAUDE.md](../CLAUDE.md#build-and-flash) for where the bundled copy lives.
+- Arduino IDE 2 ignores profiles. To build or flash from the IDE, install the same versions through the Boards Manager (add `https://espressif.github.io/arduino-esp32/package_esp32_index.json`) and the Library Manager.
+- To bump a version, edit `sketch.yaml`, compile-check, and update the table above in the same commit.
+
+**Size baseline.** A test sketch using Wi-Fi AP, AsyncWebServer with a WebSocket, ArduinoJson, LittleFS, Preferences and a GPTimer compiles to 994 KB of flash (50% of the 1.875 MB app slot) and 46.6 KB of static RAM (14%). The BLE stack in Phase 4 comes on top of that. On the default partition scheme, this baseline alone would already use 76% of the app slot.
 
 ## Modules
 
@@ -137,6 +160,7 @@ Directions are strings rather than enum numbers, which removes the v1 CW/OFF/CCW
 
 ## Testing
 
-- Compile-check with arduino-cli before every flash (Phase 0).
-- UI: develop against the Node mock server and check it at phone width.
+- Compile-check with arduino-cli before every flash (see [Pinned versions](#pinned-versions-sketchyaml)).
+- UI: develop against the Node mock server ([tools/mock-server](../tools/mock-server/README.md)) and check it at phone width. Run `node tools/mock-server/server.js`, then open `http://127.0.0.1:8080/`. It emulates the v1 protocol today; Phase 2 adds v2.
+- The UI connects to `ws://${location.host}/ws`. Using `host` rather than `hostname` keeps the port, so the page works on the mock's port as well as on the device's port 80.
 - Hardware (done by the user): use each phase's "Done when" checks in the roadmap. Serial logs at 115200 baud.

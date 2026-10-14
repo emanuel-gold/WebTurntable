@@ -6,11 +6,14 @@ Mark items `[x]` as they land.
 
 ## Status
 
-_Last updated 2026-10-13._
+_Last updated 2026-10-14._
 
-- **Done:** planning. Scope, phases, hardware pin map, firmware design and enclosure approach are all written up; the enclosure STLs are measured.
-- **No v2 code yet.** `code/` is still the v1 ESP8266 firmware.
-- **Next:** Phase 0, then Phase 1. Phase 1 can start right away. Phase E is blocked on [open questions](#open-questions) 1–3 (board measurements, wiring method, USB/power), so ask the user before enclosure work.
+- **Done:** planning, and Phase 0 except the open questions:
+  - master is tagged `v1-esp8266`, and v2 work happens on the `v2-esp32` branch.
+  - `code/WebTurntable/sketch.yaml` pins the ESP32 core and libraries. A test sketch compiles with the IDE-bundled arduino-cli.
+  - The mock server in `tools/mock-server/` emulates the v1 protocol and has been checked in a browser against the current UI.
+- **No v2 firmware yet.** `code/` is still the v1 ESP8266 firmware. Only the UI's WebSocket URL changed (`location.host`, for the mock).
+- **Next:** Phase 1. Ask the user [open question 6](#open-questions) (how to flash) before the first flash. Phase E is blocked on open questions 1–3 (board measurements, wiring method, USB/power), so ask the user before enclosure work.
 - **Working style:**
   - Do code work on a branch (for example `v2-esp32`) after tagging `v1-esp8266`.
   - Commit per checklist item or logical step.
@@ -39,9 +42,9 @@ Homing would add a zero that survives power cycles and turning the disk by hand.
 
 ## Phase 0: Prep
 
-- [ ] Tag master `v1-esp8266` before any v2 code change, so D1 mini builds stay reproducible. Do v2 work on a branch.
-- [ ] Get arduino-cli working on the build PC (standalone, or the copy bundled with Arduino IDE 2) with ESP32 core 3.x and the v2 libraries ([FIRMWARE.md](FIRMWARE.md#toolchain)). Pin core and library versions in `sketch.yaml` so firmware can be compile-checked before flashing.
-- [ ] Add a Node mock server (`tools/mock-server/`) that serves `data/` and fakes the WebSocket protocol, so the UI can be built and tested in a browser without hardware.
+- [x] Tag master `v1-esp8266` before any v2 code change, so D1 mini builds stay reproducible. Do v2 work on a branch.
+- [x] Get arduino-cli working on the build PC (standalone, or the copy bundled with Arduino IDE 2) with ESP32 core 3.x and the v2 libraries ([FIRMWARE.md](FIRMWARE.md#toolchain)). Pin core and library versions in `sketch.yaml` so firmware can be compile-checked before flashing.
+- [x] Add a Node mock server (`tools/mock-server/`) that serves `data/` and fakes the WebSocket protocol, so the UI can be built and tested in a browser without hardware.
 - [ ] Answer the [open questions](#open-questions). Board measurements block the enclosure.
 
 ## Phase 1: ESP32 port (parity)
@@ -127,6 +130,9 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-13 | Angle control ships without homing (session zero, Set zero, index mark). Homing goes to the backlog. |
 | 2026-10-13 | Enclosure cost is not a constraint (PLA, FDM). Deferred hardware is not designed into the enclosure. |
 | 2026-10-13 | Captive portal scrapped. OTA comes after the MVP and before backlog items. |
+| 2026-10-14 | Toolchain pinned in the `esp32` profile of `code/WebTurntable/sketch.yaml`: core 3.3.12, ESP Async WebServer 3.12.1, Async TCP 3.5.0, ArduinoJson 7.4.3. The arduino-cli 0.34.0 bundled with IDE 2.2.1 is enough; no standalone install. |
+| 2026-10-14 | Keep the Minimal SPIFFS scheme even though core 3.x gives it 128 KB of file system, not 190 KB. If the UI outgrows it, use gzipped assets or a custom `partitions.csv`. |
+| 2026-10-14 | The mock server uses only Node built-ins, including a minimal WebSocket implementation, so neither PC needs `npm install`. It emulates v1 now; v2 comes in Phase 2. |
 
 ## Open questions
 
@@ -135,3 +141,4 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 3. **Power and USB:** micro-USB on the DevKit through the riser wall (recommended: power and programming, no extra parts), or a USB-C panel socket in the old slot for power only?
 4. **Shutter test phones:** which iPhone or Android models, and which camera apps?
 5. **ESP8266 version:** freeze it at the `v1-esp8266` tag (assumed), or keep it maintained alongside v2?
+6. **Flashing (needed for Phase 1):** flash from Arduino IDE 2, which needs the pinned core and libraries installed there too (another ~6.5 GB, and the IDE ignores `sketch.yaml`)? Or flash with `arduino-cli upload --profile esp32`, which reuses the profile install? With arduino-cli, the web UI goes up through a small script (mklittlefs and esptool, both included with the core) instead of the IDE plugin.
