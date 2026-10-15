@@ -6,8 +6,8 @@ Run every command from the repo folder, in PowerShell or Command Prompt.
 
 ## One-time setup
 
-1. **Arduino IDE 2.** The script uses the arduino-cli bundled with the IDE, or one on PATH, so there is nothing else to install. The build PC already has it; the other PC would need it first.
-2. **Download the core.** Run `tools\flash.cmd check` once. The first build downloads the ESP32 core and libraries (about 6.5 GB, a few minutes). Later builds are quick. This is already done on the build PC.
+1. **Arduino IDE 2.** The script uses the arduino-cli bundled with the IDE, or one on PATH, so there is nothing else to install.
+2. **Download the core.** Run `tools\flash.cmd check` once. The first build downloads the ESP32 core and libraries (about 6.5 GB, a few minutes). Later builds are quick.
 3. **USB driver.** Plug in the DevKit with a USB data cable, then run `tools\flash.cmd ports`. The DevKit shows up as a port with `Usb` = `True`. If no new port appears, install the driver for the USB chip on your board (the small chip next to the micro-USB socket):
    - CP2102 or CP2104 (marked SILABS): the Silicon Labs "CP210x USB to UART Bridge VCP" driver.
    - CH340 or CH9102: the WCH CH340/CH341 driver.
@@ -31,6 +31,16 @@ Run every command from the repo folder, in PowerShell or Command Prompt.
 
 When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `http://192.168.4.1`.
 
+### Motor test (no Wi-Fi)
+
+`tools\flash.cmd firmware -Sketch code\Basic` uploads the Basic sketch. The motor turns clockwise at about 7 RPM, and the status LED lights. Use it to check the harness before flashing the full firmware. Flash the full firmware again afterwards with `tools\flash.cmd all`.
+
+### First flash checklist
+
+1. `tools\flash.cmd all`, then `tools\flash.cmd monitor`. Press the DevKit's **EN** button to restart it and see the whole boot log. It should end with `WiFi AP started - IP: 192.168.4.1`, and the status LED stays lit.
+2. Join `TURNTABLE`, open `http://192.168.4.1`, set a speed, and try CW, OFF and CCW. The log shows each change, and `Settings saved:` about a second later.
+3. Unplug USB, plug it back in, and reload the page. The sliders come back where you left them.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -38,7 +48,8 @@ When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `
 | `No USB serial port found` | Check the cable and driver ([setup step 3](#one-time-setup)), or try another USB port on the PC. |
 | Stuck at `Connecting....`, then `Failed to connect to ESP32` | Hold the **BOOT** button on the DevKit, run the command again, and release BOOT once `Writing at 0x...` appears. Some boards need this every time. |
 | `Could not open COM7, the port is busy` | Close whatever has the port open: the serial monitor (this script's or the Arduino IDE's), or another terminal. |
-| Blank page or 404 at 192.168.4.1, or the log says the file system failed to mount | The web UI isn't on the board. Run `tools\flash.cmd webui`. |
+| The status LED blinks (half a second on, half a second off) and there's no Wi-Fi | The firmware stopped at a startup error. `tools\flash.cmd monitor`, then press **EN**, shows which one. Most often the web UI is missing: run `tools\flash.cmd webui`. |
+| Blank page or 404 at 192.168.4.1 | The web UI isn't on the board. Run `tools\flash.cmd webui`. |
 | The board keeps resetting, and the log shows `Brownout detector was triggered` | Power problem. See [HARDWARE.md](HARDWARE.md#power): the 470 µF capacitor, and a 1 A supply. |
 | PowerShell says running scripts is disabled | Use `tools\flash.cmd`, not `flash.ps1`. The `.cmd` wrapper bypasses the policy for that one run without changing any settings. |
 

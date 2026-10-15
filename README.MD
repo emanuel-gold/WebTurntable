@@ -1,13 +1,19 @@
 # **WebTurntable**
 A webpage controllable turntable project that I made during a free weekend. This repository contains the project code. Visit the [MakerWorld](https://makerworld.com/en/models/572900) page to get the 3D files.
 
+This fork moves the turntable to an ESP32 (v2, work in progress; see the [roadmap](docs/ROADMAP.md)). The original ESP8266 (Wemos D1 mini) version is kept at the `v1-esp8266` tag.
+
 ## **Necessary components**
 ### **Electronics**
 - ULN2003 stepper driver
 - 28byj-48 (5V) motor
-- Wemos D1 mini (USB-C)
+- ESP32 DevKit V1, 30-pin (ESP-WROOM-32, micro-USB)
 - 3mm LED
 - LED current limiting resistor (220 ohm)
+- 470 µF electrolytic capacitor (10 V or more), across the ULN2003 power pins
+- Dupont housings and crimp pins for the wiring harness
+
+The pin map and harness are in [docs/HARDWARE.md](docs/HARDWARE.md).
 
 ### **Fasteners**
 - 3x M3 threaded inserts
@@ -21,28 +27,31 @@ A webpage controllable turntable project that I made during a free weekend. This
 - Body
 - Bottom plate
 
+The ESP32 doesn't fit in the original body, so v2 adds a riser ring under it ([docs/ENCLOSURE.md](docs/ENCLOSURE.md)).
+
 ## **Compile and upload the code**
-The code is based on the arduino software platform. In order to compile and upload the code, it is recommended to install the [ArduinoIDE](https://www.arduino.cc/en/software/) and the [ESP8266 board package](https://arduino-esp8266.readthedocs.io/en/latest/installing.html).
+The code is based on the Arduino platform with the ESP32 core. It is compiled and uploaded with arduino-cli, using the core and library versions pinned in `sketch.yaml`. Arduino IDE 2 includes arduino-cli, so installing the IDE is enough.
+
+On Windows, `tools\flash.cmd` does everything:
+- `tools\flash.cmd all` uploads the firmware and the webpage.
+- `tools\flash.cmd monitor` shows the serial log.
+
+Step-by-step instructions and troubleshooting are in [docs/FLASHING.md](docs/FLASHING.md).
 
 ### **Basic example**
-Simple code example that just rotates the turntable.
+Simple code example that just rotates the turntable. It is also a quick wiring test: the motor turns clockwise and the LED lights. Upload it with `tools\flash.cmd firmware -Sketch code\Basic`.
 
 ### **WebTurntable**
-The full version of the code. The turntable acts as a Wi-Fi access point, allowing you to contoll the turntable through a webinterface.
+The full version of the code. The turntable acts as a Wi-Fi access point, allowing you to control the turntable through a web interface.
 
-The last direction, speed, and stepping mode are stored in [LittleFS](https://github.com/earlephilhower/arduino-littlefs-upload), and loaded from flash after reboot/power cycle. To prevent excessive wear on the flash memory, settings are written after a short idle delay (750 ms). After changing controls, wait about 1 second before unplugging power so the latest state is saved.
+The last direction, speed, and stepping mode are stored in the ESP32's flash (NVS) and loaded after a reboot or power cycle. To prevent excessive wear on the flash memory, settings are written after a short idle delay (750 ms). After changing controls, wait about 1 second before unplugging power so the latest state is saved. The webpage itself is stored separately in LittleFS, so uploading a new webpage keeps the settings.
 
 The following additional libraries are used:
 - [ESPAsyncWebServer](https://github.com/ESP32Async/ESPAsyncWebServer)
-- [ESPAsyncTCP](https://github.com/ESP32Async/ESPAsyncTCP)
-- [Arduino_JSON](https://github.com/arduino-libraries/Arduino_JSON)
-
-
-You can upload the code directly from the ArduinoIDE. To upload the webpage data you will need to install the [LittleFS tool](https://github.com/earlephilhower/arduino-littlefs-upload).
+- [AsyncTCP](https://github.com/ESP32Async/AsyncTCP)
+- [ArduinoJson](https://arduinojson.org/)
 
 You can open the web interface to control the turntable as follows:
 1. Connect to the Wi-Fi hotspot with name `TURNTABLE`
 2. Open your browser and enter the following address `http://192.168.4.1`
-3. You should now be in the webinterface to control the turntable
-
-**Make sure the flash size is set to: "4MB (FS:3MB OTA: ~512KB)"**
+3. You should now be in the web interface to control the turntable

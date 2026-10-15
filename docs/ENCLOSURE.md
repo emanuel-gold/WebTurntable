@@ -48,20 +48,21 @@ Keep the body, disk and bottom plate as they are, or lightly modified, and add o
 
 | Layer | Height | Source |
 |---|---|---|
-| Top of the WROOM shield to the underside of the header spacer | ≈ 7 | 13 measured to the pin tips, minus ≈ 6 of exposed pin |
-| Dupont housing, from the spacer | ≈ 14 | Typical crimp housing; measure one |
-| Wire bend at the housing exit | ≈ 5 | |
-| **Stack** | **≈ 26** | Riser H ≈ 27 with clearance |
+| Top of the WROOM shield to the end of a Dupont housing pushed onto a header pin | 22 | Measured 2026-10-14 ("just under 22") |
+| Wire bend at the housing exit | ≈ 8 | Room to turn the leads 90° without bending them right at the crimp |
+| **Stack** | **≈ 30** | Pins-down orientation. Riser H ≈ 31 with clearance. |
+
+The space under the motor is H + 0.5, because the motor's bottom (z ≈ −21) sits 0.5 above the body's bottom edge. The flipped orientation may allow a lower H (see below).
 
 - **Orientation** (decide when designing the cradle):
   - **Pins down on standoffs:** module and USB socket on top. The wires leave the housings downward and have to bend along the plate.
   - **Flipped:** module down on short standoffs. The wires leave upward, toward the ULN2003 in the body. If the board sits under free space below the deck, the bend can use that space and the riser can be lower.
-- **Mounting holes:** four, one at each corner. Their centers are 23.37 apart across the width, about 2.5 in from each long edge (from the board's dimension drawing).
-- **Still needed:** the hole diameter, the lengthwise hole spacing (about 47 scaled from the drawing, but not dimensioned there), and one housing measurement: with a housing pushed onto a header pin, measure from the top of the WROOM shield to the end of the housing. See [roadmap open questions](ROADMAP.md#open-questions).
+- **Mounting holes:** four Ø3 holes (measured), one at each corner. Their centers are 23.37 apart across the width, about 2.5 in from each long edge (from the board's dimension drawing). They fit M2.5 screws, into printed posts or M2.5 heat-set inserts.
+- **Still needed:** the lengthwise hole spacing (about 47 scaled from the drawing, but not dimensioned there). See [roadmap open questions](ROADMAP.md#open-questions).
 
 ### Bottom plate v2
 
-- The original plate plus a DevKit cradle. This board has mounting holes, so the cradle is screw posts or standoffs sized to them (measurements pending).
+- The original plate plus a DevKit cradle: four posts for M2.5 screws through the board's Ø3 corner holes.
 - Lay the DevKit along a chord with its USB end at the wall. At 51.45 × 28.33 it fits anywhere inside Ø96.
 - Keep the antenna end (opposite the USB end) away from the motor and the wiring.
 

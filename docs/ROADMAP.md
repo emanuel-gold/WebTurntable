@@ -8,14 +8,14 @@ Mark items `[x]` as they land.
 
 _Last updated 2026-10-14._
 
-- **Done:** planning and Phase 0.
-  - v1 is frozen at tag `v1-esp8266`.
-  - `code/WebTurntable/sketch.yaml` pins the ESP32 core and libraries. A test sketch compiles with the IDE-bundled arduino-cli.
-  - The mock server in `tools/mock-server/` emulates the v1 protocol and has been checked in a browser against the current UI.
-  - `tools\flash.cmd` compiles and flashes with arduino-cli ([FLASHING.md](FLASHING.md)). Port detection and the web UI image build are tested; uploading to a board isn't, because no v2 firmware exists yet.
-  - The planning questions are answered (see Decisions, 2026-10-14).
-- **No v2 firmware yet.** `code/` is still the v1 ESP8266 firmware. Only the UI's WebSocket URL changed (`location.host`, for the mock).
-- **Next:** Phase 1. The first real flash also tests `tools\flash.cmd all` on hardware. Phase E can start once the two remaining [open questions](#open-questions) (mounting holes, Dupont stack height) are measured.
+- **Done:** planning and Phase 0 (toolchain profile, flash script, mock server, v1 frozen at tag `v1-esp8266`).
+- **Phase 1: code done, waiting on the hardware test.**
+  - `code/WebTurntable` and `code/Basic` now target the ESP32. Both compile with the pinned profile, with no warnings.
+  - Nothing has been flashed yet. The first `tools\flash.cmd all` is also the first real test of the flash script's uploads.
+  - The user runs the [first flash checklist](FLASHING.md#first-flash-checklist), which covers the "Done when" below.
+- **Next:**
+  - Fix whatever the hardware test turns up, then Phase 2.
+  - Phase E needs one more measurement: [open question 1](#open-questions).
 - **Working style:**
   - Work on master. v1 stays reproducible at tag `v1-esp8266`.
   - Commit per checklist item or logical step.
@@ -54,10 +54,18 @@ Homing would add a zero that survives power cycles and turning the disk by hand.
 
 Same features as v1, running on the DevKit.
 
-- [ ] ESP32 includes (`WiFi.h`, `AsyncTCP.h`), the pin map from [HARDWARE.md](HARDWARE.md), and the partition scheme from [FIRMWARE.md](FIRMWARE.md#toolchain).
-- [ ] Fix the CCW direction mismatch (UI sends `2`, firmware expects `3`).
-- [ ] Status LED on the new pin, with the same error blink as v1.
-- [ ] Update the README build instructions for ESP32, pointing to [FLASHING.md](FLASHING.md).
+- [x] ESP32 includes (`WiFi.h`, `AsyncTCP.h`), the pin map from [HARDWARE.md](HARDWARE.md), and the partition scheme from [FIRMWARE.md](FIRMWARE.md#toolchain).
+- [x] Fix the CCW direction mismatch (UI sends `2`, firmware expects `3`). `RotateDirection::CCW` is now 2.
+- [x] Status LED on the new pin, with the same error blink as v1.
+- [x] Update the README build instructions for ESP32, pointing to [FLASHING.md](FLASHING.md).
+- [x] Also done in this phase:
+  - Settings moved from a LittleFS file to NVS.
+  - ArduinoJson 7 replaces Arduino_JSON.
+  - Serial logs at 115200.
+  - A race-free save flag (the web server runs on the other core).
+  - Periodic WebSocket client cleanup.
+  - `code/Basic` ported as a motor-only wiring test.
+- [ ] Hardware test by the user ([first flash checklist](FLASHING.md#first-flash-checklist)).
 
 **Done when:** the existing UI drives the motor on the DevKit, and settings survive a power cycle.
 
@@ -80,7 +88,7 @@ Same features as v1, running on the DevKit.
 - [ ] Back-and-forth (sweep): range or two end angles, speed, dwell at the ends, cycle count.
 - [ ] Stop conditions for spin and sweep: after N revolutions or cycles, or after T minutes. The UI shows what remains.
 - [ ] Presets: save the current mode and parameters under a name, then apply or delete it (about 10 slots). Store them somewhere a web UI upload doesn't erase ([FIRMWARE.md](FIRMWARE.md#persistence)).
-- [ ] Persist the last-used state with the debounced write kept from v1.
+- [ ] Persist the last-used state for the new modes and parameters, extending Phase 1's debounced NVS store.
 
 **Done when:** a saved preset still reproduces the same motion after a reboot.
 
@@ -97,7 +105,7 @@ Same features as v1, running on the DevKit.
 
 Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 
-- [ ] Measure the DevKit and choose the wiring method; together these set the riser height. Board measured and Dupont chosen (2026-10-14). Still needed: [open questions](#open-questions) 1–2.
+- [x] Measure the DevKit and choose the wiring method; together these set the riser height. Dupont is chosen, and the stack is 22 plus about 8 of wire bend, so the riser is about 31 ([ENCLOSURE.md](ENCLOSURE.md#riser-ring)). The lengthwise hole spacing is still open ([open question 1](#open-questions)); it only affects the cradle.
 - [ ] Script and print the **riser ring**, a new part between the body and the bottom plate, with a micro-USB opening.
 - [ ] **Bottom plate v2:** the original plate plus a DevKit cradle.
 - [ ] **Body v2:** close the old USB-C slot (optional) and add a zero index mark. The existing LED hole is reused.
@@ -138,7 +146,12 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-14 | Keep the Minimal SPIFFS scheme even though core 3.x gives it 128 KB of file system, not 190 KB. If the UI outgrows it, use gzipped assets or a custom `partitions.csv`. |
 | 2026-10-14 | The mock server uses only Node built-ins, including a minimal WebSocket implementation, so neither PC needs `npm install`. It emulates v1 now; v2 comes in Phase 2. |
 | 2026-10-14 | Board: 30-pin DOIT DevKit V1, 51.45 × 28.33 mm, 13 mm from the pin tips to the top of the shield. Headers are soldered, and there are four corner mounting holes 23.37 apart across the width. |
-| 2026-10-14 | Wiring: crimped Dupont housings on the existing header pins of both the DevKit and the ULN2003 ([HARDWARE.md](HARDWARE.md#dupont-harness)). The riser is about 27 mm. |
+| 2026-10-14 | Wiring: crimped Dupont housings on the existing header pins of both the DevKit and the ULN2003 ([HARDWARE.md](HARDWARE.md#dupont-harness)). Measured from the top of the shield to the end of a housing: just under 22. With wire bend room, the riser is about 31. |
+| 2026-10-14 | The DevKit's mounting holes are Ø3, for M2.5 screws into posts on the bottom plate. |
+| 2026-10-14 | Phase 1 stores settings in NVS (`Preferences`) instead of a LittleFS file, as the v2 design planned, so web UI uploads keep them. |
+| 2026-10-14 | Phase 1 switches to ArduinoJson 7 now, rather than adding Arduino_JSON to the profile only to drop it in Phase 2. |
+| 2026-10-14 | CCW fixed by making `RotateDirection::CCW` 2, the value the UI already sends. The mock server follows the fixed firmware. |
+| 2026-10-14 | Serial logs at 115200 baud, matching the ESP32 boot messages and `tools\flash.cmd monitor`. |
 | 2026-10-14 | Power and programming go through the DevKit's micro-USB, via an opening in the riser. A USB-C connector is a backlog item. |
 | 2026-10-14 | The shutter test target is an iPhone 16 with the default Camera app. |
 | 2026-10-14 | The ESP8266 version is frozen at tag `v1-esp8266` and not maintained. |
@@ -147,7 +160,6 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 
 ## Open questions
 
-The 2026-10-13 planning questions are answered (see Decisions, 2026-10-14). These measurements block Phase E:
+The 2026-10-13 planning questions are answered (see Decisions, 2026-10-14).
 
-1. **DevKit mounting holes:** the hole diameter, and the center-to-center spacing along the board's length. The spacing across the width (23.37) is known from the dimension drawing. These set the cradle posts.
-2. **Dupont stack height:** with a crimped housing pushed onto a header pin, the distance from the top of the WROOM shield to the end of the housing. It sets the riser height ([ENCLOSURE.md](ENCLOSURE.md#riser-ring)).
+1. **DevKit hole spacing along the length:** center to center, between the antenna-end and USB-end holes. The diameter (Ø3) and the spacing across the width (23.37) are known. Needed for the cradle posts in Phase E.

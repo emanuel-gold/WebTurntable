@@ -38,7 +38,7 @@ arduino-cli compile --profile esp32 code/WebTurntable
 - Arduino IDE 2 ignores profiles, so v2 is built and flashed with arduino-cli only ([FLASHING.md](FLASHING.md)). Building from the IDE would mean installing the same versions there as well, another ~6.5 GB.
 - To bump a version, edit `sketch.yaml`, compile-check, and update the table above in the same commit.
 
-**Size baseline.** A test sketch using Wi-Fi AP, AsyncWebServer with a WebSocket, ArduinoJson, LittleFS, Preferences and a GPTimer compiles to 994 KB of flash (50% of the 1.875 MB app slot) and 46.6 KB of static RAM (14%). The BLE stack in Phase 4 comes on top of that. On the default partition scheme, this baseline alone would already use 76% of the app slot.
+**Size baseline.** A test sketch using Wi-Fi AP, AsyncWebServer with a WebSocket, ArduinoJson, LittleFS, Preferences and a GPTimer compiles to 994 KB of flash (50% of the 1.875 MB app slot) and 46.6 KB of static RAM (14%). The BLE stack in Phase 4 comes on top of that. On the default partition scheme, this baseline alone would already use 76% of the app slot. The Phase 1 firmware is 1,008 KB (51%) with 46.6 KB of static RAM, and compiles without warnings under `--warnings all`.
 
 ## Modules
 
@@ -145,6 +145,8 @@ Directions are strings rather than enum numbers, which removes the v1 CW/OFF/CCW
 ## Persistence
 
 - **Last-used state:** stored in NVS (`Preferences`), written after 750 ms of idle as in v1. NVS is wear-levelled and suits small key-value data.
+  - Done in Phase 1: namespace `turntable`, key `settings`, holding the `TurntableSettings` struct as a blob. A load is rejected if the size or magic number doesn't match. Bump `MAGIC` when the struct layout changes, so old data is ignored rather than misread.
+  - NVS sits outside the LittleFS partition, so firmware and web UI uploads both keep it.
 - **Presets:** stored in `/presets.json` on LittleFS, about 10 entries.
   - Uploading the web UI rewrites the whole LittleFS partition, so it would also erase the presets.
   - Decide in Phase 3: keep presets in NVS instead (it survives both firmware and web UI uploads), or accept the loss and document it.

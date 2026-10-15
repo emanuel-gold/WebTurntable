@@ -9,7 +9,7 @@
 | 28BYJ-48 stepper, 5 V | Unchanged. Direct drive: the disk sits on the motor shaft. |
 | 3 mm LED + 220 Ω resistor | Status LED, using the body's existing LED hole. |
 | 470 µF electrolytic capacitor, ≥10 V | Across 5 V and GND at the ULN2003 board. Stops ESP32 brownout resets when the coils switch. |
-| Fasteners | Same as v1, except the 3 bottom-plate M3 bolts are longer by the riser height ([ENCLOSURE.md](ENCLOSURE.md)). |
+| Fasteners | Same as v1, except the 3 bottom-plate M3 bolts are longer by the riser height ([ENCLOSURE.md](ENCLOSURE.md)). Add 4 × M2.5 screws for the DevKit's Ø3 mounting holes. |
 
 Deferred hardware (hall sensor, touch pads, lighting, IR) is listed in the [roadmap backlog](ROADMAP.md#backlog-deferred) and is not designed in yet.
 

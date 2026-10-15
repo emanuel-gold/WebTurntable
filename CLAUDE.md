@@ -13,13 +13,13 @@ Push to `origin` only when the user asks. Never push or open PRs against `upstre
 
 Work directly on master; there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
 
-**Current state:** Phase 0 is done (build profile, flash script, mock server), but `code/` still holds the v1 firmware.
+**Current state:** Phase 1 (ESP32 port with v1 parity) is code-complete and compile-checked, and waiting on the user's hardware test. `code/` now targets the ESP32 but keeps the v1 structure and protocol until Phase 2.
 
 **In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
 
 ## Starting a session
 
-1. Run `git pull` and check `git status`. Work may have happened on the other PC.
+1. Run `git pull` and check `git status`.
 2. Read the **Status** section of [docs/ROADMAP.md](docs/ROADMAP.md). It says what is done and what comes next.
 3. Check which tools this PC has before planning around them (see [Environment](#environment)).
 4. If the next task depends on an unanswered roadmap open question, ask the user first.
@@ -28,11 +28,13 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
 
 ## Layout
 
-- `code/Basic/Basic.ino`: minimal sketch that only spins the motor (no Wi-Fi).
+- `code/Basic/`: minimal sketch that only spins the motor and lights the LED (no Wi-Fi). It's a wiring test, with its own `sketch.yaml` that has to stay in step with the main one.
 - `code/WebTurntable/`: the full firmware (an Arduino sketch folder).
   - `WebTurntable.ino`: `setup()` and `loop()`.
   - `turntable.{h,cpp}`: pins, the settings struct, and stepping (blocking `delayMicroseconds` inside `loop()`).
-  - `server.{h,cpp}`: Wi-Fi AP, AsyncWebServer with the WebSocket at `/ws`, and settings persistence (LittleFS, written after 750 ms idle).
+  - `server.{h,cpp}`: Wi-Fi AP, AsyncWebServer with the WebSocket at `/ws`, and settings persistence (NVS via `Preferences`, written after 750 ms idle).
+    - The AsyncTCP callbacks run in their own task, possibly on the other core, while `loop()` runs on core 1.
+    - Treat anything shared between the two as cross-thread.
   - `data/`: the web UI served from LittleFS (`index.html`, `script.js`, `style.css`, `favicon.png`). Vanilla JS, no build step.
   - `sketch.yaml`: arduino-cli build profile `esp32` that pins the v2 core and library versions.
 - `STL/`: body, bottom plate, and `top plate` (which is the disk).
@@ -73,7 +75,7 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
   - The other has Blender and the Arduino tooling.
 - At session start, check what exists here (`arduino-cli version`, the Arduino IDE, `blender --version`, `python -c "import numpy"`, `node --version`) rather than assuming. Executables may be installed but not on PATH. On the build PC, the Arduino IDE (2.2.1) is under `%LOCALAPPDATA%\Programs\Arduino IDE` and Blender under `C:\Program Files\Blender Foundation\`.
 - The mock server's tests need Node 22.4 or newer, for the built-in WebSocket client.
-- Keep the PCs in sync through `origin` on GitHub: pull at the start, and push when the user asks.
+- The user handles syncing between the PCs. Don't raise it, and don't ask about pushing for the other PC's sake.
 - Claude's auto-memory is stored per machine and doesn't travel between PCs. Put anything durable in this file or in `docs/`.
 - **STL tools:**
   - Use `python tools/stl_inspect.py` (needs only numpy) to measure STLs and render cross-sections to PNG, then view the PNGs.
@@ -92,7 +94,7 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
 - Web UI stays dependency-free: no frameworks and no CDN, because the phone has no internet while it is on the turntable's AP.
 - Keep the flash-wear guard: persist settings only after an idle delay, never on every change.
 
-## Known issues (v1)
+## Known issues
 
-- **Direction mismatch:** the UI direction slider sends `2` for CCW (`data/index.html`), but `RotateDirection::CCW == 3` (`turntable.h`). It only works because any value other than CW steps CCW, and the logs show `direction=UNKNOWN`. The v2 protocol fixes this.
-- **Uneven speed slider:** the slider is linear in step delay, so speed is very uneven across it. Half the slider covers about 1.5–2.7 RPM, and the top is about 16.4 RPM.
+- **Uneven speed slider (until Phase 2):** the slider is linear in step delay, so speed is very uneven across it. Half the slider covers about 1.5–2.7 RPM, and the top is about 16.4 RPM.
+- **Fixed in Phase 1, still present at the `v1-esp8266` tag:** the UI sends `2` for CCW, but v1's `RotateDirection::CCW` was `3`. CCW still worked, because any value other than CW steps CCW, but the logs showed `direction=UNKNOWN`.
