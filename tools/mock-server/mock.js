@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { acceptUpgrade } from './websocket.js';
-import * as protocolV1 from './protocol-v1.js';
+import * as protocolV2 from './protocol-v2.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,7 +15,7 @@ export const DEFAULT_DATA_DIR = path.resolve(here, '../../code/WebTurntable/data
 
 // Each protocol module exports createDevice({ broadcast, log }).
 export const PROTOCOLS = {
-    v1: protocolV1,
+    v2: protocolV2,
 };
 
 const CONTENT_TYPES = {
@@ -33,7 +33,7 @@ export async function startMockServer({
     port = 8080,
     host = '127.0.0.1',
     dataDir = DEFAULT_DATA_DIR,
-    protocol = 'v1',
+    protocol = 'v2',
     log = () => {},
 } = {}) {
     if (!PROTOCOLS[protocol]) {

@@ -15,7 +15,7 @@ Options:
   -p, --port <n>        HTTP port (default 8080)
       --host <addr>     Bind address (default 127.0.0.1; use 0.0.0.0 to test from a phone on the LAN)
       --data <dir>      Web UI folder (default code/WebTurntable/data)
-      --protocol <v>    Protocol to emulate: ${Object.keys(PROTOCOLS).join(', ')} (default v1)
+      --protocol <v>    Protocol to emulate: ${Object.keys(PROTOCOLS).join(', ')} (default v2)
   -h, --help            Show this help
 
 While running, type a command and press Enter:
@@ -45,7 +45,7 @@ async function main() {
                 port: { type: 'string', short: 'p', default: '8080' },
                 host: { type: 'string', default: '127.0.0.1' },
                 data: { type: 'string', default: DEFAULT_DATA_DIR },
-                protocol: { type: 'string', default: 'v1' },
+                protocol: { type: 'string', default: 'v2' },
                 help: { type: 'boolean', short: 'h', default: false },
             },
         }));

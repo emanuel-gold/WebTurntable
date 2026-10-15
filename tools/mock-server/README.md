@@ -14,7 +14,7 @@ node tools/mock-server/server.js --help     # all options
 | `-p, --port` | `8080` | |
 | `--host` | `127.0.0.1` | Use `0.0.0.0` to open the UI from a phone on the same network. Windows may ask to allow Node through the firewall. |
 | `--data` | `code/WebTurntable/data` | Folder to serve. Files are read on every request, so edits show on reload. |
-| `--protocol` | `v1` | Protocol to emulate (see below). |
+| `--protocol` | `v2` | Protocol to emulate (see below). |
 
 While it runs, type a command and press Enter:
 
@@ -26,8 +26,8 @@ The log mirrors the firmware's serial output (connects, commands, and `Settings 
 
 ## Protocols
 
-- **`v1`** (`protocol-v1.js`) emulates the v1-format protocol that `code/WebTurntable` speaks until Phase 2. It applies the same validation as `server.cpp` and broadcasts the full state after every command. It follows the current firmware, where CCW is 2. The `v1-esp8266` tag used 3 and logged the UI's CCW as `direction=UNKNOWN`.
-- **`v2`** is not written yet. Phase 2 adds `protocol-v2.js` for the [v2 protocol](../../docs/FIRMWARE.md#websocket-protocol-v2-draft) and registers it in `PROTOCOLS` in `mock.js`.
+- **`v2`** (`protocol-v2.js`) emulates the [v2 protocol](../../docs/FIRMWARE.md#websocket-protocol-v2). It parses and validates commands the way `server.cpp` does, and simulates the motion engine with the same ramp, braking and move-target logic as `motion.cpp`, ticking every 10 ms. It broadcasts state after each command and 10 times a second while the disk moves, and logs `Settings saved` once the disk is idle, as the firmware does.
+- The v1 protocol (`protocol-v1.js`) was removed in Phase 2 along with the v1 UI; it's in the git history.
 
 A protocol module exports `createDevice({ broadcast, log })`, which returns `{ onConnect, onMessage, onDisconnect, describe, close }`.
 
@@ -38,7 +38,7 @@ A protocol module exports `createDevice({ broadcast, log })`, which returns `{ o
 | `server.js` | Command-line entry: options, startup banner, stdin commands. |
 | `mock.js` | HTTP static files plus WebSocket routing; `startMockServer()` is also used by the tests. |
 | `websocket.js` | Minimal RFC 6455 server: handshake, masked frames, fragmentation, ping, close. Messages are limited to 64 KB. |
-| `protocol-v1.js` | v1 device emulation. |
+| `protocol-v2.js` | v2 device emulation, including the simulated motion engine. |
 | `mock.test.js` | Tests. |
 
 ## Test
