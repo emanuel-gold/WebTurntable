@@ -2,7 +2,7 @@
 
 ## Project
 
-WebTurntable is a small motorized turntable (100 mm disk, 28BYJ-48 stepper, ULN2003 driver) controlled from a phone browser. The microcontroller runs an open Wi-Fi access point (`TURNTABLE`) and serves a web UI at `http://192.168.4.1`. The UI talks to the firmware over a WebSocket. The enclosure is FDM-printed in PLA; STLs are in `STL/`, and the originals are on MakerWorld (model 572900).
+WebTurntable is a small motorized turntable (100 mm disk, 28BYJ-48 stepper, ULN2003 driver) controlled from a phone browser. The microcontroller runs an open Wi-Fi access point (`TURNTABLE`) and serves a web UI at `http://192.168.4.5`. The UI talks to the firmware over a WebSocket. The enclosure is FDM-printed in PLA; STLs are in `STL/`, and the originals are on MakerWorld (model 572900).
 
 This repo is a fork:
 
@@ -13,7 +13,7 @@ Push to `origin` only when the user asks. Never push or open PRs against `upstre
 
 Work directly on master; there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
 
-**Current state:** Phase 1 (ESP32 port with v1 parity) is code-complete and compile-checked, and waiting on the user's hardware test. `code/` now targets the ESP32 but keeps the v1 structure and protocol until Phase 2.
+**Current state:** Phase 1 (ESP32 port with v1 parity) is flashed on the DevKit. The UI test at 192.168.4.5 is still pending. `code/` now targets the ESP32 but keeps the v1 structure and protocol until Phase 2.
 
 **In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
 
@@ -65,6 +65,7 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
 - The script finds arduino-cli on PATH or bundled with Arduino IDE 2, usually at `<IDE install dir>\resources\app\lib\backend\resources\arduino-cli.exe`.
 - `-WhatIf` compiles and builds the web UI image without writing to a board. Use it to test the script.
 - Ask before uploading to a connected board.
+- The current DevKit only enters download mode while the user holds BOOT ([HARDWARE.md](docs/HARDWARE.md#download-mode-and-the-boot-button)), so an upload can't run unattended. Either the user runs `tools\flash.cmd` and holds BOOT, or they hold it while you run the command.
 - If flashing steps change, update [docs/FLASHING.md](docs/FLASHING.md). The user wants it easy to follow.
 - The user does hardware testing (motor behavior, phone pairing). Don't claim a change works on the device until the user confirms it.
 

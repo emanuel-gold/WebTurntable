@@ -53,5 +53,5 @@ The following additional libraries are used:
 
 You can open the web interface to control the turntable as follows:
 1. Connect to the Wi-Fi hotspot with name `TURNTABLE`
-2. Open your browser and enter the following address `http://192.168.4.1`
+2. Open your browser and enter the following address `http://192.168.4.5`
 3. You should now be in the web interface to control the turntable

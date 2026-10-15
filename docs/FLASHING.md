@@ -29,7 +29,7 @@ Run every command from the repo folder, in PowerShell or Command Prompt.
 - **Dry run:** add `-WhatIf` to compile and build the web UI image without writing anything to the board.
 - **Web UI uploads replace the whole file system.** Anything the firmware stores there (presets, from Phase 3) is erased. Settings kept in NVS survive.
 
-When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `http://192.168.4.1`.
+When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `http://192.168.4.5`.
 
 ### Motor test (no Wi-Fi)
 
@@ -37,8 +37,8 @@ When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `
 
 ### First flash checklist
 
-1. `tools\flash.cmd all`, then `tools\flash.cmd monitor`. Press the DevKit's **EN** button to restart it and see the whole boot log. It should end with `WiFi AP started - IP: 192.168.4.1`, and the status LED stays lit.
-2. Join `TURNTABLE`, open `http://192.168.4.1`, set a speed, and try CW, OFF and CCW. The log shows each change, and `Settings saved:` about a second later.
+1. `tools\flash.cmd all`, then `tools\flash.cmd monitor`. Press the DevKit's **EN** button to restart it and see the whole boot log. It should end with `WiFi AP started - IP: 192.168.4.5`, and the status LED stays lit.
+2. Join `TURNTABLE`, open `http://192.168.4.5`, set a speed, and try CW, OFF and CCW. The log shows each change, and `Settings saved:` about a second later.
 3. Unplug USB, plug it back in, and reload the page. The sliders come back where you left them.
 
 ## Troubleshooting
@@ -46,10 +46,12 @@ When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `
 | Symptom | Fix |
 |---|---|
 | `No USB serial port found` | Check the cable and driver ([setup step 3](#one-time-setup)), or try another USB port on the PC. |
-| Stuck at `Connecting....`, then `Failed to connect to ESP32` | Hold the **BOOT** button on the DevKit, run the command again, and release BOOT once `Writing at 0x...` appears. Some boards need this every time. |
+| Stuck at `Connecting....`, then `Failed to connect to ESP32: Wrong boot mode detected (0x13)` or a timeout | The board didn't enter download mode by itself. Hold the **BOOT** button on the DevKit, run the command again, and release BOOT once `Writing at 0x...` appears. `all` uploads twice, so hold it for each upload. The current DevKit needs this every time; see [HARDWARE.md](HARDWARE.md#download-mode-and-the-boot-button) for the fix. |
+| `Download mode successfully detected, but getting no sync reply: The serial TX path seems to be down` | The board's output reaches the PC, but nothing gets back to it on RX0 (GPIO3). Unplug everything from the DevKit except USB, keep it off conductive surfaces, and retry with BOOT held. If a bare board still fails, try another DevKit. |
+| The page doesn't load, or shows some other device's page | Your phone isn't on the `TURNTABLE` network, or it switched back to your home Wi-Fi because `TURNTABLE` has no internet. Rejoin `TURNTABLE`, and stay on it if the phone asks. |
 | `Could not open COM7, the port is busy` | Close whatever has the port open: the serial monitor (this script's or the Arduino IDE's), or another terminal. |
 | The status LED blinks (half a second on, half a second off) and there's no Wi-Fi | The firmware stopped at a startup error. `tools\flash.cmd monitor`, then press **EN**, shows which one. Most often the web UI is missing: run `tools\flash.cmd webui`. |
-| Blank page or 404 at 192.168.4.1 | The web UI isn't on the board. Run `tools\flash.cmd webui`. |
+| Blank page or 404 at 192.168.4.5 | The web UI isn't on the board. Run `tools\flash.cmd webui`. |
 | The board keeps resetting, and the log shows `Brownout detector was triggered` | Power problem. See [HARDWARE.md](HARDWARE.md#power): the 470 µF capacitor, and a 1 A supply. |
 | PowerShell says running scripts is disabled | Use `tools\flash.cmd`, not `flash.ps1`. The `.cmd` wrapper bypasses the policy for that one run without changing any settings. |
 

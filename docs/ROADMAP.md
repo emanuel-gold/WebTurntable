@@ -6,16 +6,18 @@ Mark items `[x]` as they land.
 
 ## Status
 
-_Last updated 2026-10-14._
+_Last updated 2026-10-15._
 
 - **Done:** planning and Phase 0 (toolchain profile, flash script, mock server, v1 frozen at tag `v1-esp8266`).
-- **Phase 1: code done, waiting on the hardware test.**
-  - `code/WebTurntable` and `code/Basic` now target the ESP32. Both compile with the pinned profile, with no warnings.
-  - Nothing has been flashed yet. The first `tools\flash.cmd all` is also the first real test of the flash script's uploads.
-  - The user runs the [first flash checklist](FLASHING.md#first-flash-checklist), which covers the "Done when" below.
+- **Phase 1: flashed, UI test pending.**
+  - The user flashed the Phase 1 firmware and web UI with `tools\flash.cmd all`, holding BOOT. The script's uploads work on hardware.
+  - Hardware findings:
+    - The board needs BOOT held to enter download mode ([HARDWARE.md](HARDWARE.md#download-mode-and-the-boot-button)).
+    - The access point moved from 192.168.4.1 to 192.168.4.5, because the user's router uses .1. That needs one more firmware flash.
+  - Still to confirm, from the [first flash checklist](FLASHING.md#first-flash-checklist): the UI drives the motor at 192.168.4.5, and settings survive a power cycle.
 - **Next:**
-  - Fix whatever the hardware test turns up, then Phase 2.
-  - Phase E needs one more measurement: [open question 1](#open-questions).
+  - Finish the Phase 1 hardware test, then Phase 2.
+  - Phase E needs [open questions](#open-questions) 1–2.
 - **Working style:**
   - Work on master. v1 stays reproducible at tag `v1-esp8266`.
   - Commit per checklist item or logical step.
@@ -152,6 +154,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-14 | Phase 1 switches to ArduinoJson 7 now, rather than adding Arduino_JSON to the profile only to drop it in Phase 2. |
 | 2026-10-14 | CCW fixed by making `RotateDirection::CCW` 2, the value the UI already sends. The mock server follows the fixed firmware. |
 | 2026-10-14 | Serial logs at 115200 baud, matching the ESP32 boot messages and `tools\flash.cmd monitor`. |
+| 2026-10-15 | The access point address is 192.168.4.5 (set with `softAPConfig`), because the user's home router is 192.168.4.1. Phones get leases from 192.168.4.6. |
 | 2026-10-14 | Power and programming go through the DevKit's micro-USB, via an opening in the riser. A USB-C connector is a backlog item. |
 | 2026-10-14 | The shutter test target is an iPhone 16 with the default Camera app. |
 | 2026-10-14 | The ESP8266 version is frozen at tag `v1-esp8266` and not maintained. |
@@ -163,3 +166,4 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 The 2026-10-13 planning questions are answered (see Decisions, 2026-10-14).
 
 1. **DevKit hole spacing along the length:** center to center, between the antenna-end and USB-end holes. The diameter (Ø3) and the spacing across the width (23.37) are known. Needed for the cradle posts in Phase E.
+2. **Flashing once enclosed:** the DevKit needs BOOT held to flash, and the buttons are out of reach inside the enclosure. Options: a 10 µF capacitor from EN to GND (try it first), access holes for BOOT and EN, or rely on Wi-Fi updates later. See [HARDWARE.md](HARDWARE.md#download-mode-and-the-boot-button).

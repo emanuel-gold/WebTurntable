@@ -47,6 +47,16 @@ GPIO 33, 25, 26 and 27 sit next to each other on the EN header, so one 4-pin Dup
 - Many DevKit boards have a diode between USB and VIN, so the motor sees about 4.7 V. That costs a little torque, which is fine in practice. Check your board before feeding 5 V into VIN while USB is also plugged in.
 - If the ESP32 resets when the motor starts (serial shows `Brownout detector was triggered`), the 470 µF capacitor at the ULN2003 board is the first fix.
 
+## Download mode and the BOOT button
+
+- **The problem.** The current DevKit doesn't enter download mode on its own. Flashing fails with `Wrong boot mode detected (0x13)` unless BOOT is held (found 2026-10-15).
+  - The USB chip's RTS line resets the chip fine.
+  - The DTR line doesn't hold GPIO0 low long enough for the chip to see it.
+- **Why it matters.** Inside the enclosure, the BOOT and EN buttons can't be reached. Before closing it up, pick one:
+  - **Fix auto-reset:** a 10 µF capacitor between **EN** and **GND** slows the EN rise. This is the usual fix for DevKits that need BOOT held, but it hasn't been tried on this board yet. Solder it across the EN and GND header pins on the underside, or put it in a spare Dupont position.
+  - **Leave access holes** for BOOT and EN in the riser or bottom plate.
+  - **Wi-Fi updates** (Phase 5), which only cover the firmware once it's running. A board stuck in a crash loop would still need USB with BOOT.
+
 ## Wiring
 
 ```
