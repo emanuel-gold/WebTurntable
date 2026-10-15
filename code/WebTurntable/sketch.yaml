@@ -7,7 +7,7 @@
 # versions through the Boards Manager and Library Manager.
 profiles:
   esp32:
-    notes: ESP32 DevKit V1 as "ESP32 Dev Module", Minimal SPIFFS partitions (1.9 MB app with OTA, 190 KB file system)
+    notes: ESP32 DevKit V1 as "ESP32 Dev Module", Minimal SPIFFS partitions (1.9 MB app with OTA, 128 KB file system)
     fqbn: esp32:esp32:esp32:PartitionScheme=min_spiffs
     platforms:
       - platform: esp32:esp32 (3.3.12)
