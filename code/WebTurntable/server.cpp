@@ -17,6 +17,11 @@ namespace
 	AsyncWebSocket ws("/ws");
 	Preferences preferences;
 
+	// Access point address. The ESP32 default, 192.168.4.1, is the home router's address here.
+	// Phones get DHCP leases from the next address up (192.168.4.6 onward).
+	const IPAddress AP_IP(192, 168, 4, 5);
+	const IPAddress AP_SUBNET(255, 255, 255, 0);
+
 	// Settings live in NVS, so uploading the web UI (which rewrites LittleFS) keeps them
 	constexpr char SETTINGS_NAMESPACE[] = "turntable";
 	constexpr char SETTINGS_KEY[] = "settings";
@@ -269,7 +274,11 @@ void initWebserver()
 	}
 	loadTurntableState();
 
-	// Setup WiFi access point
+	// Setup WiFi access point, with its address set first so DHCP hands out matching leases
+	if (!WiFi.softAPConfig(AP_IP, AP_IP, AP_SUBNET))
+	{
+		Serial.println("Error: Failed to set the access point address");
+	}
 	WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
 	Serial.print("WiFi AP started - IP: ");
 	Serial.println(WiFi.softAPIP());
