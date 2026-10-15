@@ -7,7 +7,8 @@
 
 void setup()
 {
-    Serial.begin(9600);
+    // Same speed as the ESP32 boot messages, so both show in one monitor
+    Serial.begin(115200);
 
     // Initialize motor control pins
     for (uint8_t i = 0; i < 4; i++)
@@ -27,5 +28,6 @@ void setup()
 void loop()
 {
     handleSettingsStorage();
+    handleWebSocketClients();
     handleTurntable();
 }

@@ -11,4 +11,7 @@ void initWebserver();
 // Save turntable settings to flash if needed
 void handleSettingsStorage();
 
+// Periodically drop stale WebSocket clients
+void handleWebSocketClients();
+
 #endif // SERVER_H

@@ -3,9 +3,9 @@
 
 #include <Arduino.h>
 
-// Turntable pin definitions
-const uint8_t MOTOR_PINS[] = {D5, D6, D7, D8};
-const uint8_t LED_PIN = D4;
+// Turntable pin definitions for the ESP32 DevKit V1 (see docs/HARDWARE.md)
+const uint8_t MOTOR_PINS[] = {33, 25, 26, 27};  // ULN2003 IN1-IN4
+const uint8_t LED_PIN = 23;                     // Status LED through 220 ohm, active high
 
 // Describes the usable stepping delay range
 #define MAX_DELAY 20000
@@ -14,12 +14,12 @@ const uint8_t LED_PIN = D4;
 // Webpage slider step count
 #define TOTAL_SLIDER_STEPS 100
 
-// Rotation direction states
+// Rotation direction states, matching the web UI's direction slider (0, 1, 2)
 enum RotateDirection : uint8_t
 {
     CW = 0,
     OFF = 1,
-    CCW = 3
+    CCW = 2
 };
 
 // Stepping mode determines the coil activation pattern and step sequence

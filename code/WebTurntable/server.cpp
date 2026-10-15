@@ -1,24 +1,31 @@
 #include "server.h"
 #include "turntable.h"
 
-#include <Arduino_JSON.h>
-#include <LittleFS.h>
+#include <atomic>
 
-#include <ESP8266WiFi.h>
-#include <ESPAsyncTCP.h>
+#include <ArduinoJson.h>
+#include <LittleFS.h>
+#include <Preferences.h>
+
+#include <WiFi.h>
+#include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 
 namespace
 {
 	AsyncWebServer server(80);
 	AsyncWebSocket ws("/ws");
-	JSONVar pageContent;
+	Preferences preferences;
 
-	constexpr char SETTINGS_FILE[] = "/turntable_state.bin";
+	// Settings live in NVS, so uploading the web UI (which rewrites LittleFS) keeps them
+	constexpr char SETTINGS_NAMESPACE[] = "turntable";
+	constexpr char SETTINGS_KEY[] = "settings";
 	constexpr unsigned long SETTINGS_SAVE_DELAY_MS = 750;
+	constexpr unsigned long WS_CLEANUP_INTERVAL_MS = 1000;
 
-	bool settingsDirty = false;
-	unsigned long lastSettingsChangeMs = 0;
+	// Set from the AsyncTCP task, which can run on the other core, and read in loop()
+	std::atomic<bool> settingsDirty{false};
+	std::atomic<unsigned long> lastSettingsChangeMs{0};
 
 	// Error handler that halts execution and blinks the LED indefinitely
     void haltWithErrorIndicator()
@@ -78,57 +85,45 @@ namespace
 	// Mark settings as dirty and start the save delay timer
     void queueSettingsSave()
     {
-        settingsDirty = true;
+        // Time first, so loop() never pairs the new flag with an old time and skips the delay
         lastSettingsChangeMs = millis();
+        settingsDirty = true;
     }
 
 	// Save the current turntable settings to flash memory
     void saveTurntableState()
     {
-        File settingsFile = LittleFS.open(SETTINGS_FILE, "w");
-        if (!settingsFile)
-        {
-            Serial.println("Failed to open settings file for writing");
-            return;
-        }
-
-        size_t bytesWritten = settingsFile.write(reinterpret_cast<const uint8_t*>(&g_turntable), sizeof(g_turntable));
-        settingsFile.close();
-
-        if (bytesWritten != sizeof(g_turntable))
-        {
-            Serial.println("Error: Incomplete write to settings file");
-            return;
-        }
-
+        // Clear the flag before copying, so a change that lands mid-save queues another save
         settingsDirty = false;
+        const TurntableSettings snapshot = g_turntable;
+
+        size_t bytesWritten = preferences.putBytes(SETTINGS_KEY, &snapshot, sizeof(snapshot));
+        if (bytesWritten != sizeof(snapshot))
+        {
+            // Not retried until the next change, so a failing flash isn't hammered
+            Serial.println("Error: Failed to write settings");
+            return;
+        }
+
         logTurntableStatus("Settings saved:");
     }
 
 	// Load turntable settings from flash memory, returns true if successful
     bool loadTurntableState()
     {
-        if (!LittleFS.exists(SETTINGS_FILE))
+        if (!preferences.isKey(SETTINGS_KEY))
         {
-            Serial.println("No saved settings file found");
-            return false;
-        }
-
-        File settingsFile = LittleFS.open(SETTINGS_FILE, "r");
-        if (!settingsFile)
-        {
-            Serial.println("Error: Failed to open settings file for reading");
+            Serial.println("No saved settings found");
             return false;
         }
 
         TurntableSettings loadedSettings;
-        size_t bytesRead = settingsFile.readBytes(reinterpret_cast<char*>(&loadedSettings), sizeof(loadedSettings));
-        settingsFile.close();
+        size_t bytesRead = preferences.getBytes(SETTINGS_KEY, &loadedSettings, sizeof(loadedSettings));
 
-        // Validate magic number and file integrity
-        if (bytesRead != sizeof(loadedSettings) || loadedSettings.magic != TurntableSettings().MAGIC)
+        // Validate size and magic number
+        if (bytesRead != sizeof(loadedSettings) || loadedSettings.magic != TurntableSettings::MAGIC)
         {
-            Serial.println("Error: Settings file invalid");
+            Serial.println("Error: Saved settings invalid");
             return false;
         }
 
@@ -138,57 +133,71 @@ namespace
         return true;
     }
 
+	// Serialize the current settings in the format the web UI expects
+	String pageContent()
+	{
+		JsonDocument page;
+		page["stepping_direction"] = static_cast<uint8_t>(g_turntable.direction);
+		page["stepping_speed"] = g_turntable.sliderSpeed;
+		page["stepping_mode"] = static_cast<uint8_t>(g_turntable.mode);
+
+		String jsonString;
+		serializeJson(page, jsonString);
+		return jsonString;
+	}
+
 	// Update the connected clients
 	void updatePage()
 	{
-		pageContent["stepping_direction"] = g_turntable.direction;
-		pageContent["stepping_speed"] = g_turntable.sliderSpeed;
-		pageContent["stepping_mode"] = g_turntable.mode;
-		
-		String jsonString = JSON.stringify(pageContent);
-		ws.textAll(jsonString);
+		ws.textAll(pageContent());
 	}
 
 	// Handle incoming WebSocket messages from clients
-	void handleClientMessage(void *arg, uint8_t *data, size_t len) 
+	void handleClientMessage(void *arg, uint8_t *data, size_t len)
 	{
 		AwsFrameInfo *info = (AwsFrameInfo*)arg;
 		if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT)
 		{
-			JSONVar jsonData = JSON.parse((char*)data);
-			String msgType = (const char*)jsonData["type"];
-			
-			// Handle stepping direction change
-			if (msgType == "stepping_direction")
+			JsonDocument jsonData;
+			if (deserializeJson(jsonData, reinterpret_cast<const char*>(data), len))
 			{
-				uint8_t direction = (uint8_t)jsonData["content"];
-				if ((direction <= RotateDirection::CCW) && (g_turntable.direction != direction))
+				Serial.println("Ignored malformed message");
+				return;
+			}
+
+			// Anything that isn't an integer becomes -1 and fails the range checks
+			const int content = jsonData["content"] | -1;
+
+			// Handle stepping direction change
+			if (jsonData["type"] == "stepping_direction")
+			{
+				if (content >= RotateDirection::CW && content <= RotateDirection::CCW && g_turntable.direction != content)
 				{
-					g_turntable.direction = (RotateDirection) direction;
+					g_turntable.direction = (RotateDirection) content;
 					queueSettingsSave();
 				}
 				updatePage();
 			}
 			// Handle speed/slider change
-			else if (msgType == "stepping_speed")
+			else if (jsonData["type"] == "stepping_speed")
 			{
-				uint16_t sliderSpeed = (uint16_t)jsonData["content"];
-				sliderSpeed = sliderSpeed > TOTAL_SLIDER_STEPS ? TOTAL_SLIDER_STEPS : sliderSpeed;
-
-				if (g_turntable.sliderSpeed != sliderSpeed)
+				if (content >= 0)
 				{
-					g_turntable.sliderSpeed = sliderSpeed;
-					queueSettingsSave();
+					uint16_t sliderSpeed = content > TOTAL_SLIDER_STEPS ? TOTAL_SLIDER_STEPS : content;
+					if (g_turntable.sliderSpeed != sliderSpeed)
+					{
+						g_turntable.sliderSpeed = sliderSpeed;
+						queueSettingsSave();
+					}
 				}
 				updatePage();
 			}
 			// Handle stepping mode change
-			else if (msgType == "stepping_mode")
+			else if (jsonData["type"] == "stepping_mode")
 			{
-				uint8_t mode = (uint8_t)jsonData["content"];
-				if ((mode <= RotateMode::HALF_STEPPING) && (g_turntable.mode != mode))
+				if (content >= RotateMode::FULL_STEPPING && content <= RotateMode::HALF_STEPPING && g_turntable.mode != content)
 				{
-					g_turntable.mode = (RotateMode) mode;
+					g_turntable.mode = (RotateMode) content;
 					queueSettingsSave();
 				}
 				updatePage();
@@ -204,7 +213,7 @@ namespace
 		case WS_EVT_CONNECT:
 			Serial.println("Client connected");
 			logTurntableStatus("Current state:");
-			client->text(JSON.stringify(pageContent));
+			client->text(pageContent());
 			break;
 
 		case WS_EVT_DISCONNECT:
@@ -241,13 +250,23 @@ namespace
 void initWebserver()
 {
 	// Initialize file system
-	if (!LittleFS.begin() || !LittleFS.exists("/index.html"))
+	if (!LittleFS.begin())
 	{
-		Serial.println("Error: Failed to mount LittleFS");
+		Serial.println("Error: Failed to mount LittleFS. Upload the web UI (tools\\flash.cmd webui)");
+		haltWithErrorIndicator();
+	}
+	if (!LittleFS.exists("/index.html"))
+	{
+		Serial.println("Error: /index.html missing from LittleFS. Upload the web UI (tools\\flash.cmd webui)");
 		haltWithErrorIndicator();
 	}
 
 	// Load persisted settings from flash
+	if (!preferences.begin(SETTINGS_NAMESPACE, false))
+	{
+		Serial.println("Error: Failed to open settings storage (NVS)");
+		haltWithErrorIndicator();
+	}
 	loadTurntableState();
 
 	// Setup WiFi access point
@@ -266,9 +285,6 @@ void initWebserver()
 	// Serve static files from LittleFS
 	server.serveStatic("/", LittleFS, "/");
 	server.begin();
-
-	// Initialize page content
-	updatePage();
 }
 
 // Handle settings storage with delayed write to flash to minimize wear
@@ -277,5 +293,16 @@ void handleSettingsStorage()
 	if (settingsDirty && millis() - lastSettingsChangeMs >= SETTINGS_SAVE_DELAY_MS)
 	{
 		saveTurntableState();
+	}
+}
+
+// Drop WebSocket clients beyond the limit, since phone browsers don't always close their connections
+void handleWebSocketClients()
+{
+	static unsigned long lastCleanupMs = 0;
+	if (millis() - lastCleanupMs >= WS_CLEANUP_INTERVAL_MS)
+	{
+		lastCleanupMs = millis();
+		ws.cleanupClients();
 	}
 }
