@@ -51,9 +51,10 @@ GPIO 33, 25, 26 and 27 sit next to each other on the EN header, so one 4-pin Dup
 
 - **The problem.** The current DevKit doesn't enter download mode on its own. Flashing fails with `Wrong boot mode detected (0x13)` unless BOOT is held (found 2026-10-15).
   - The USB chip's RTS line resets the chip fine.
-  - The DTR line doesn't hold GPIO0 low long enough for the chip to see it.
+  - The DTR line never pulls GPIO0 low. On 2026-10-15, custom esptool reset sequences held DTR asserted for up to 3 s after reset (read-only `chip-id` tests), and the chip still booted normally every time (boot mode 0x13). So this isn't a timing problem: the DTR-to-GPIO0 path (the line, its transistor, or the USB chip) doesn't work on this board.
 - **Why it matters.** Inside the enclosure, the BOOT and EN buttons can't be reached. Before closing it up, pick one:
-  - **Fix auto-reset:** a 10 µF capacitor between **EN** and **GND** slows the EN rise. This is the usual fix for DevKits that need BOOT held, but it hasn't been tried on this board yet. Solder it across the EN and GND header pins on the underside, or put it in a spare Dupont position.
+  - **Use another DevKit** whose auto-reset works. Check it with the same read-only test before wiring it in.
+  - **10 µF capacitor between EN and GND:** the usual fix when auto-reset timing is marginal. It's unlikely to help here, because the timing tests failed even with long holds.
   - **Leave access holes** for BOOT and EN in the riser or bottom plate.
   - **Wi-Fi updates** (Phase 5), which only cover the firmware once it's running. A board stuck in a crash loop would still need USB with BOOT.
 

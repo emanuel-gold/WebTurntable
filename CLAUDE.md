@@ -13,7 +13,7 @@ Push to `origin` only when the user asks. Never push or open PRs against `upstre
 
 Work directly on main (renamed from master); there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
 
-**Current state:** Phase 1 (ESP32 port with v1 parity) is flashed on the DevKit. The UI test at 192.168.4.5 is still pending. `code/` now targets the ESP32 but keeps the v1 structure and protocol until Phase 2.
+**Current state:** Phase 1 (ESP32 port with v1 parity) is flashed. The UI loads at both addresses and settings persist; motor control is still to be confirmed. `code/` now targets the ESP32 but keeps the v1 structure and protocol until Phase 2.
 
 **In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
 

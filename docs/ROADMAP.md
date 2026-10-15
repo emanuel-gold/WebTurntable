@@ -14,7 +14,8 @@ _Last updated 2026-10-15._
   - Hardware findings:
     - The board needs BOOT held to enter download mode ([HARDWARE.md](HARDWARE.md#download-mode-and-the-boot-button)).
     - The access point moved from 192.168.4.1 to 192.168.4.5, because the user's router uses .1. The firmware also announces `turntable.local` (mDNS). Both need one more firmware flash.
-  - Still to confirm, from the [first flash checklist](FLASHING.md#first-flash-checklist): the UI drives the motor at 192.168.4.5, and settings survive a power cycle.
+  - Confirmed by the user on 2026-10-15: the IP address and `turntable.local` both load the UI, and slider settings survive a power cycle.
+  - Still to confirm: the UI drives the motor (CW, OFF, CCW).
 - **Next:**
   - Finish the Phase 1 hardware test, then Phase 2.
   - Phase E needs [open questions](#open-questions) 1–2.
@@ -168,4 +169,4 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 The 2026-10-13 planning questions are answered (see Decisions, 2026-10-14).
 
 1. **DevKit hole spacing along the length:** center to center, between the antenna-end and USB-end holes. The diameter (Ø3) and the spacing across the width (23.37) are known. Needed for the cradle posts in Phase E.
-2. **Flashing once enclosed:** the DevKit needs BOOT held to flash, and the buttons are out of reach inside the enclosure. Options: a 10 µF capacitor from EN to GND (try it first), access holes for BOOT and EN, or rely on Wi-Fi updates later. See [HARDWARE.md](HARDWARE.md#download-mode-and-the-boot-button).
+2. **Flashing once enclosed:** the DevKit needs BOOT held to flash, and the buttons are out of reach inside the enclosure. Tests show this board's DTR line never pulls GPIO0 low, so the usual 10 µF EN capacitor fix is unlikely to help. Options: another DevKit with working auto-reset (check it with a read-only test), access holes for BOOT and EN, or rely on Wi-Fi updates later. See [HARDWARE.md](HARDWARE.md#download-mode-and-the-boot-button).
