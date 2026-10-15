@@ -1,0 +1,13 @@
+# arduino-cli build profile for the motor-only test sketch. Keep the board and
+# core in step with code/WebTurntable/sketch.yaml. Flash it with:
+#
+#   tools\flash.cmd firmware -Sketch code\Basic
+profiles:
+  esp32:
+    notes: ESP32 DevKit V1 as "ESP32 Dev Module", same partitions as the main firmware
+    fqbn: esp32:esp32:esp32:PartitionScheme=min_spiffs
+    platforms:
+      - platform: esp32:esp32 (3.3.12)
+        platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+
+default_profile: esp32

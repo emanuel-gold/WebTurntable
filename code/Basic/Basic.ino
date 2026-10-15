@@ -1,9 +1,11 @@
 /*
     Simple example code to get the Turntable spinning.
+    Also a wiring test: the motor turns clockwise and the status LED lights.
 */
 
-static constexpr uint8_t MOTOR_PINS[] = {D5, D6, D7, D8};
-static constexpr uint8_t LED_PIN = D4;
+// ESP32 DevKit V1 pins, the same as code/WebTurntable/turntable.h
+static constexpr uint8_t MOTOR_PINS[] = {33, 25, 26, 27};
+static constexpr uint8_t LED_PIN = 23;
 
 static constexpr uint8_t HALF_STEPPING_PATTERN[8][4] = 
 {
@@ -25,6 +27,10 @@ void setup()
         pinMode(MOTOR_PINS[i], OUTPUT);
         digitalWrite(MOTOR_PINS[i], LOW);
     }
+
+    // Light the status LED to show the sketch is running
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, HIGH);
 }
 
 void loop()

@@ -22,6 +22,9 @@
 
 .EXAMPLE
     tools\flash.cmd webui -Port COM7
+
+.EXAMPLE
+    tools\flash.cmd firmware -Sketch code\Basic
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -35,7 +38,7 @@ param(
     # Serial monitor speed; the v2 firmware logs at 115200.
     [int]$Baud = 115200,
 
-    # Sketch folder (default code\WebTurntable). Only changed when testing this script.
+    # Sketch folder (default code\WebTurntable). Use code\Basic for the motor-only wiring test.
     [string]$Sketch
 )
 
@@ -235,6 +238,9 @@ function Invoke-WebUi([string]$Target) {
 }
 
 try {
+    if (-not (Test-Path (Join-Path $Sketch 'sketch.yaml'))) {
+        throw "No sketch with a sketch.yaml at $Sketch. Run this from the repo folder."
+    }
     $script:Cli = Find-ArduinoCli
 
     switch ($Action) {
@@ -251,7 +257,9 @@ try {
             $target = Resolve-Port
             Invoke-Firmware $target
             Invoke-WebUi $target
-            Write-Step 'Done. Join the TURNTABLE Wi-Fi network and open http://192.168.4.1'
+            if (-not $WhatIfPreference) {
+                Write-Step 'Done. Join the TURNTABLE Wi-Fi network and open http://192.168.4.1'
+            }
         }
         'monitor' {
             $target = Resolve-Port
