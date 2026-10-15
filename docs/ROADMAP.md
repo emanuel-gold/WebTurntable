@@ -8,17 +8,14 @@ Mark items `[x]` as they land.
 
 _Last updated 2026-10-15._
 
-- **Done:** planning and Phase 0 (toolchain profile, flash script, mock server, v1 frozen at tag `v1-esp8266`).
-- **Phase 1: flashed, UI test pending.**
-  - The user flashed the Phase 1 firmware and web UI with `tools\flash.cmd all`, holding BOOT. The script's uploads work on hardware.
-  - Hardware findings:
-    - The board needs BOOT held to enter download mode ([HARDWARE.md](HARDWARE.md#download-mode-and-the-boot-button)).
-    - The access point moved from 192.168.4.1 to 192.168.4.5, because the user's router uses .1. The firmware also announces `turntable.local` (mDNS). Both need one more firmware flash.
-  - Confirmed by the user on 2026-10-15: the IP address and `turntable.local` both load the UI, and slider settings survive a power cycle.
-  - Still to confirm: the UI drives the motor (CW, OFF, CCW).
-- **Next:**
-  - Finish the Phase 1 hardware test, then Phase 2.
-  - Phase E needs [open questions](#open-questions) 1–2.
+- **Done:** planning, Phase 0, and Phase 1 (confirmed on hardware 2026-10-15: motor control from the UI, both addresses, settings across a power cycle).
+- **Phase 2: code done, waiting on the hardware test.**
+  - Built: the motion engine (GPTimer ISR plus a 1 kHz ramp task), protocol v2, the new UI, and the v2 mock server.
+  - Compile-checked, and tested against the mock (13 tests, plus a browser check at phone width).
+  - Nothing has been flashed yet. It needs `tools\flash.cmd all` (firmware and UI), with BOOT held.
+  - The user runs the [Phase 2 hardware checks](FLASHING.md#phase-2-hardware-checks): smoothness, a 360° return, the 10-revolution test, max speed, and two phones.
+- **Next:** fix what the hardware test finds, record the measured max speed and steps per revolution, then Phase 3.
+- **Deferred:** the BOOT-button question (open question 2), at the user's call. Phase E needs open question 1.
 - **Working style:**
   - Work on main. v1 stays reproducible at tag `v1-esp8266`.
   - Commit per checklist item or logical step.
@@ -68,20 +65,23 @@ Same features as v1, running on the DevKit.
   - A race-free save flag (the web server runs on the other core).
   - Periodic WebSocket client cleanup.
   - `code/Basic` ported as a motor-only wiring test.
-- [ ] Hardware test by the user ([first flash checklist](FLASHING.md#first-flash-checklist)).
+- [x] Hardware test by the user ([first flash checklist](FLASHING.md#first-flash-checklist)): confirmed 2026-10-15.
 
 **Done when:** the existing UI drives the motor on the DevKit, and settings survive a power cycle.
 
 ## Phase 2: Motion engine and core UI
 
-- [ ] Hardware-timer step generation that replaces `delayMicroseconds` in `loop()`, with a position counter in half-steps.
-- [ ] Trapezoidal acceleration and deceleration on start, stop, and speed or direction changes.
-- [ ] Drive modes: half-step (smooth, default) and two-phase full-step (more torque). Two-phase full-step replaces v1's one-coil "full" pattern.
-- [ ] Coils off when idle, as in v1.
-- [ ] Verify steps per revolution with a 10-revolution test against the index mark (expected 2037.886 full steps).
-- [ ] Speed set in RPM, with seconds per revolution shown alongside. Make the slider linear in RPM, and find the real max reliable speed on hardware (v1 tops out around 16 RPM).
-- [ ] Angle control: live angle dial, Set zero, Rotate by (quick ± buttons and a custom value), Go to angle (shortest path or a chosen direction).
-- [ ] WebSocket protocol v2 ([FIRMWARE.md](FIRMWARE.md#websocket-protocol-v2-draft)) and UI rework: direction as buttons, plus an always-visible STOP.
+- [x] Hardware-timer step generation that replaces `delayMicroseconds` in `loop()`, with a position counter in half-steps.
+- [x] Trapezoidal acceleration and deceleration on start, stop, and speed or direction changes.
+- [x] Drive modes: half-step (smooth, default) and two-phase full-step (more torque). Two-phase full-step replaces v1's one-coil "full" pattern.
+- [x] Coils off when idle, as in v1.
+- [ ] Verify steps per revolution with a 10-revolution test against the index mark (expected 2037.886 full steps). Hardware test: Rotate by 3600°.
+- [x] Speed set in RPM, with seconds per revolution shown alongside, and a slider linear in RPM.
+- [ ] Find the real max reliable speed on hardware (v1 tops out around 16 RPM). The max speed setting goes up to 30 for this test.
+- [x] Angle control: live angle dial, Set zero, Rotate by (quick ± buttons and a custom value), Go to angle (shortest path or a chosen direction).
+- [x] WebSocket protocol v2 ([FIRMWARE.md](FIRMWARE.md#websocket-protocol-v2)) and UI rework: direction as buttons, plus an always-visible STOP.
+- [x] Mock server speaks v2 and simulates the motion engine.
+- [ ] Hardware test by the user ([Phase 2 hardware checks](FLASHING.md#phase-2-hardware-checks)).
 - [ ] Stretch experiment: PWM microstepping through the ULN2003 (ESP32 LEDC) for quieter low-speed motion. Keep it only if it is clearly better.
 
 **Done when:** start and stop look smooth, a 360° Rotate by returns to the same mark, and two phones show the angle updating live.
@@ -157,6 +157,12 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-14 | CCW fixed by making `RotateDirection::CCW` 2, the value the UI already sends. The mock server follows the fixed firmware. |
 | 2026-10-14 | Serial logs at 115200 baud, matching the ESP32 boot messages and `tools\flash.cmd monitor`. |
 | 2026-10-15 | The access point address is 192.168.4.5 (set with `softAPConfig`), because the user's home router is 192.168.4.1. Phones get leases from 192.168.4.6. |
+| 2026-10-15 | BOOT-button flashing is accepted for now. Hands-free flashing (another DevKit, access holes) is revisited before the enclosure closes. |
+| 2026-10-15 | Phase 2 angles grow clockwise (positive = CW), like a compass. |
+| 2026-10-15 | Web commands are queued and run in `loop()`, so all settings and motion requests live on one thread. |
+| 2026-10-15 | Settings saves wait for the motor to be idle, because flash writes pause the step interrupt (`CONFIG_GPTIMER_ISR_IRAM_SAFE` is off in the core). A spin started from rest is saved first, so it still resumes after a power cycle as in v1. |
+| 2026-10-15 | Rotate by builds on the last target in degrees, so repeated presses don't add up half-step rounding. |
+| 2026-10-15 | The mock server dropped the v1 protocol along with the v1 UI. |
 | 2026-10-15 | The firmware announces `turntable.local` over mDNS (ESPmDNS, part of the core), so phones can use a name. The IP address stays as the fallback for phones without mDNS. Adds about 36 KB of flash (53% total). |
 | 2026-10-14 | Power and programming go through the DevKit's micro-USB, via an opening in the riser. A USB-C connector is a backlog item. |
 | 2026-10-14 | The shutter test target is an iPhone 16 with the default Camera app. |
@@ -169,4 +175,4 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 The 2026-10-13 planning questions are answered (see Decisions, 2026-10-14).
 
 1. **DevKit hole spacing along the length:** center to center, between the antenna-end and USB-end holes. The diameter (Ø3) and the spacing across the width (23.37) are known. Needed for the cradle posts in Phase E.
-2. **Flashing once enclosed:** the DevKit needs BOOT held to flash, and the buttons are out of reach inside the enclosure. Tests show this board's DTR line never pulls GPIO0 low, so the usual 10 µF EN capacitor fix is unlikely to help. Options: another DevKit with working auto-reset (check it with a read-only test), access holes for BOOT and EN, or rely on Wi-Fi updates later. See [HARDWARE.md](HARDWARE.md#download-mode-and-the-boot-button).
+2. **Flashing once enclosed** (deferred by the user 2026-10-15; revisit before closing the enclosure): the DevKit needs BOOT held to flash, and the buttons are out of reach inside the enclosure. Tests show this board's DTR line never pulls GPIO0 low, so the usual 10 µF EN capacitor fix is unlikely to help. Options: another DevKit with working auto-reset (check it with a read-only test), access holes for BOOT and EN, or rely on Wi-Fi updates later. See [HARDWARE.md](HARDWARE.md#download-mode-and-the-boot-button).

@@ -44,7 +44,7 @@ Simple code example that just rotates the turntable. It is also a quick wiring t
 ### **WebTurntable**
 The full version of the code. The turntable acts as a Wi-Fi access point, allowing you to control the turntable through a web interface.
 
-The last direction, speed, and stepping mode are stored in the ESP32's flash (NVS) and loaded after a reboot or power cycle. To prevent excessive wear on the flash memory, settings are written after a short idle delay (750 ms). After changing controls, wait about 1 second before unplugging power so the latest state is saved. The webpage itself is stored separately in LittleFS, so uploading a new webpage keeps the settings.
+The speed, direction, drive mode, acceleration and max speed are stored in the ESP32's flash (NVS) and loaded after a reboot or power cycle. A spin that was running when the power went off starts again. To prevent excessive wear on the flash memory, settings are written after a short idle delay (750 ms), once the disk has stopped. The webpage itself is stored separately in LittleFS, so uploading a new webpage keeps the settings.
 
 The following additional libraries are used:
 - [ESPAsyncWebServer](https://github.com/ESP32Async/ESPAsyncWebServer)

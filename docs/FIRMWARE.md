@@ -38,7 +38,7 @@ arduino-cli compile --profile esp32 code/WebTurntable
 - Arduino IDE 2 ignores profiles, so v2 is built and flashed with arduino-cli only ([FLASHING.md](FLASHING.md)). Building from the IDE would mean installing the same versions there as well, another ~6.5 GB.
 - To bump a version, edit `sketch.yaml`, compile-check, and update the table above in the same commit.
 
-**Size baseline.** A test sketch using Wi-Fi AP, AsyncWebServer with a WebSocket, ArduinoJson, LittleFS, Preferences and a GPTimer compiles to 994 KB of flash (50% of the 1.875 MB app slot) and 46.6 KB of static RAM (14%). The BLE stack in Phase 4 comes on top of that. On the default partition scheme, this baseline alone would already use 76% of the app slot. The Phase 1 firmware is 1,008 KB (51%) with 46.6 KB of static RAM, and compiles without warnings under `--warnings all`.
+**Size baseline.** A test sketch using Wi-Fi AP, AsyncWebServer with a WebSocket, ArduinoJson, LittleFS, Preferences and a GPTimer compiles to 994 KB of flash (50% of the 1.875 MB app slot) and 46.6 KB of static RAM (14%). The BLE stack in Phase 4 comes on top of that. On the default partition scheme, this baseline alone would already use 76% of the app slot. The Phase 2 firmware (motion engine, protocol v2, mDNS) is 1,052 KB (53%) with 48.9 KB of static RAM, and compiles without warnings under `--warnings all`.
 
 ## Modules
 
@@ -55,7 +55,7 @@ arduino-cli compile --profile esp32 code/WebTurntable
 
 ## Motion engine
 
-**Units.** Position is a signed 32-bit count of half-steps. The 28BYJ-48 gear ratio is about 63.684:1, so one revolution is 2037.886 full steps, or 4075.77 half-steps. The commonly quoted 2048 would be 0.5% off, about 1.8° per revolution. The disk sits directly on the shaft, so one half-step is about 0.088° of disk rotation. Phase 2 confirms the ratio on the real motor.
+**Units.** Position is a signed 32-bit count of half-steps (`HALF_STEPS_PER_REV` in `config.h`). The 28BYJ-48 gear ratio is about 63.684:1, so one revolution is 2037.886 full steps, or 4075.77 half-steps. The commonly quoted 2048 would be 0.5% off, about 1.8° per revolution. The disk sits directly on the shaft, so one half-step is about 0.088° of disk rotation. Phase 2 confirms the ratio on the real motor.
 
 **Phase table.** One 8-entry half-step table, as in v1:
 
@@ -63,29 +63,43 @@ arduino-cli compile --profile esp32 code/WebTurntable
 - Two-phase full-step mode moves 2 entries at a time and stays on the odd entries, where two coils are on. That gives more torque than v1's one-coil "full" pattern.
 - Both modes count position in half-steps, so switching modes never loses position.
 
-**Timing.** Step generation is split between a timer interrupt and a control task:
+**Direction and angle.** Positive is clockwise looking down at the disk, so angles grow clockwise from the session zero, like a compass. Clockwise walks the phase table backwards, as in v1.
 
-- **Timer interrupt (ISR).** A hardware timer (GPTimer) fires once per step. Its callback writes the coil pattern, updates the position, and sets the next alarm from a shared `stepIntervalUs`.
-  - Keep the ISR short, in IRAM, and integer-only (avoid floating point in ISRs on the ESP32).
-  - For moves, it stops exactly at the target position.
-- **Control task.** A FreeRTOS task at about 1 kHz does the floating-point work. It ramps `stepIntervalUs` toward the target speed at constant acceleration, and starts decelerating when the remaining steps drop to v²/(2a).
+**Timing** (implemented in Phase 2, `motion.cpp`). Step generation is split between a timer interrupt and a control task, both on core 1, away from Wi-Fi on core 0:
 
-**API (sketch).**
+- **Timer interrupt (ISR).** A GPTimer at 1 MHz fires once per step event. The callback writes the coil pattern straight to the GPIO set and clear registers, updates the position, and schedules the next alarm `stepIntervalUs` after the previous one (never in the past).
+  - It's integer-only and lives in IRAM.
+  - For moves it never steps past the target, and stops exactly on it.
+  - In full-step mode it takes one half-step first if needed to land on a two-coil phase.
+- **Control task.** A FreeRTOS task at 1 kHz (priority 5) does the floating-point work.
+  - It ramps the velocity at constant acceleration: toward the cruise speed for a spin, through zero for a direction change, and down to zero for a stop.
+  - For moves, it starts braking when the remaining distance drops to v²/(2a) + 1 half-step.
+  - It hands the ISR a direction and an interval. Below `START_RPM` (1 RPM) the motor steps without a ramp, so a ramp starts and ends there.
+- **Flash writes pause stepping.** The core's prebuilt libraries don't set `CONFIG_GPTIMER_ISR_IRAM_SAFE`, so the step interrupt waits while flash is written. Settings saves therefore wait until the motor is idle.
+
+**API** (`motion.h`):
 
 ```cpp
 void motionBegin();
-void motionRun(float rpm, Direction dir);   // continuous; ramps to speed
-void motionMoveBy(int32_t halfSteps);       // relative move with ramps
-void motionMoveTo(int32_t halfSteps);       // absolute, from the session zero
-void motionStop();                          // ramp down
-void motionHalt();                          // immediate stop, coils off
+void motionRun(float rpm, Direction dir);           // continuous; ramps to speed and direction
+void motionMoveTo(int32_t position, float rpm);     // half-steps from the session zero
+void motionStop();                                  // ramp down
+void motionHalt();                                  // immediate stop, coils off
 void motionSetZero();
-MotionStatus motionStatus();                // position, speed, state
+void motionSetDriveMode(DriveMode mode);
+void motionSetAcceleration(float rpmPerSecond);
+MotionStatus motionStatus();                        // state, position, angle, speed
 ```
+
+Requests are queued under a spinlock and picked up on the next control tick (at most 1 ms later).
+
+**Moves in degrees.** `server.cpp` turns degrees into half-step targets. It keeps the last target in degrees and builds the next Rotate by on it while the move is unfinished, or while the disk still sits on that target. That way 24 presses of +15° land back on the starting angle, instead of piling up 0.18 half-steps of rounding per press. Go to angle measures from the current position (shortest way, CW or CCW).
 
 **Idle.** The coils switch off when the motor stops, as in v1, so the motor stays cool. If the disk drifts during capture settle times, add an optional hold.
 
-**Limits.** v1 runs at about 1.5–16.4 RPM. v2 aims for about 0.5 RPM up to the fastest speed that doesn't skip steps with a typical load and ramps; that limit has to be measured on hardware. Max speed and acceleration are user settings.
+**Limits** (`config.h`). Speed runs from 0.5 RPM up to the max speed setting (default 15, at most 30). Acceleration is 1–200 RPM/s (default 20). The real max reliable speed has to be measured on hardware (Phase 2).
+
+**Command flow.** The AsyncTCP task only parses and validates JSON, replying with an error if a command is bad. Valid commands go on a FreeRTOS queue, and `loop()` runs them, so settings and motion requests are only touched from one thread.
 
 ## Sequencer jobs
 
@@ -105,19 +119,42 @@ The photo capture loop is: move one step angle, wait the settle time, press the 
 - **No confirmation:** the link is one-way, so the firmware can't tell whether a photo was actually taken. The UI shows connected/disconnected and has a Test button.
 - **Radio sharing:** Bluetooth and the Wi-Fi AP share one radio, which is fine for this little traffic. Check range with the enclosure closed.
 
-## WebSocket protocol v2 (draft)
+## WebSocket protocol v2
 
-One endpoint, `/ws`, carrying JSON text frames. Each client-to-device command has a `cmd` field. The device broadcasts the full `state` to every client whenever something changes, and about 10 times a second while the disk is moving.
+One endpoint, `/ws`, carrying JSON text frames. Each client-to-device command has a `cmd` field. The device broadcasts the full `state` to every client after each command, about 10 times a second while the disk moves, and once when it stops. A new client gets the state as soon as it connects.
 
-Commands (client to device):
+**Implemented in Phase 2:**
 
 ```json
-{"cmd":"run","rpm":5.0,"dir":"cw"}
-{"cmd":"stop"}
-{"cmd":"halt"}
-{"cmd":"moveBy","deg":-90}
-{"cmd":"moveTo","deg":180,"dir":"shortest"}
+{"cmd":"speed","rpm":5.0}                       // speed setting; changes a running spin
+{"cmd":"run","dir":"cw","rpm":5.0}              // spin; rpm is optional
+{"cmd":"stop"}                                  // ramp down
+{"cmd":"halt"}                                  // stop now, coils off
+{"cmd":"moveBy","deg":-90}                      // relative, positive clockwise
+{"cmd":"moveTo","deg":180,"dir":"shortest"}     // dir: shortest (default), cw or ccw
 {"cmd":"setZero"}
+{"cmd":"settings","driveMode":"half","maxRpm":15,"accel":20}   // any subset
+```
+
+- Speeds are clamped to 0.5 RPM–max speed, max speed to 0.5–30, and acceleration to 1–200.
+- Lowering the max speed below the speed setting pulls the setting down with it.
+- Moves run at the speed setting, and a move ends a spin.
+
+```json
+{"type":"state","motion":"moving","angle":120.3,"speed":-4.87,"rpm":5.00,"dir":"cw","spinning":false,
+ "settings":{"driveMode":"half","maxRpm":15.0,"accel":20.0},
+ "limits":{"minRpm":0.5,"maxRpm":30,"minAccel":1,"maxAccel":200}}
+{"type":"error","msg":"run needs dir cw or ccw"}
+```
+
+- `motion` is `idle`, `running`, `moving` or `stopping`.
+- `speed` is the current speed, signed (positive clockwise).
+- `rpm` and `dir` are the spin settings, and `spinning` says whether a spin is on.
+- Errors go only to the client that sent the bad command.
+
+**Planned for later phases** (draft):
+
+```json
 {"cmd":"sweep","rangeDeg":90,"rpm":3,"dwellMs":500,"cycles":4}
 {"cmd":"capture","type":"photo","shots":36,"settleMs":800,"afterMs":500,"dir":"cw"}
 {"cmd":"capturePause"}
@@ -127,25 +164,18 @@ Commands (client to device):
 {"cmd":"presetSave","name":"Product 36"}
 {"cmd":"presetApply","id":3}
 {"cmd":"presetDelete","id":3}
-{"cmd":"settings","driveMode":"half","maxRpm":15,"accel":20}
 ```
 
-Messages (device to client):
-
-```json
-{"type":"state","job":"capture","running":true,"angle":120.3,"rpm":5.0,"dir":"cw",
- "progress":{"done":12,"total":36,"etaS":48},"shutter":"connected",
- "settings":{"driveMode":"half","maxRpm":15,"accel":20}}
-{"type":"presets","items":[{"id":1,"name":"Slow spin"}]}
-{"type":"error","msg":"shutter not connected"}
-```
+These will add `job`, `progress` and `shutter` fields to the state, and a `{"type":"presets"}` message.
 
 Directions are strings rather than enum numbers, which removes the v1 CW/OFF/CCW mismatch.
 
 ## Persistence
 
 - **Last-used state:** stored in NVS (`Preferences`), written after 750 ms of idle as in v1. NVS is wear-levelled and suits small key-value data.
-  - Done in Phase 1: namespace `turntable`, key `settings`, holding the `TurntableSettings` struct as a blob. A load is rejected if the size or magic number doesn't match. Bump `MAGIC` when the struct layout changes, so old data is ignored rather than misread.
+  - Namespace `turntable`, key `settings`, holding the `TurntableSettings` struct as a blob. Phase 2 stores rpm, dir, spinning, drive mode, max speed and acceleration (`MAGIC` "TTB2").
+  - A load is rejected if the size or magic number doesn't match. Bump `MAGIC` when the struct layout changes, so old data is ignored rather than misread. Loaded values are clamped to the limits.
+  - Saves wait until the motor is idle, because flash writes pause the step timer. One exception: a spin started from rest is saved right away, before the motor starts, so it resumes after a power cycle as in v1.
   - NVS sits outside the LittleFS partition, so firmware and web UI uploads both keep it.
 - **Presets:** stored in `/presets.json` on LittleFS, about 10 entries.
   - Uploading the web UI rewrites the whole LittleFS partition, so it would also erase the presets.
@@ -165,6 +195,6 @@ Directions are strings rather than enum numbers, which removes the v1 CW/OFF/CCW
 ## Testing
 
 - Compile-check with arduino-cli before every flash (see [Pinned versions](#pinned-versions-sketchyaml)).
-- UI: develop against the Node mock server ([tools/mock-server](../tools/mock-server/README.md)) and check it at phone width. Run `node tools/mock-server/server.js`, then open `http://127.0.0.1:8080/`. It emulates the v1 protocol today; Phase 2 adds v2.
+- UI: develop against the Node mock server ([tools/mock-server](../tools/mock-server/README.md)) and check it at phone width. Run `node tools/mock-server/server.js`, then open `http://127.0.0.1:8080/`. It emulates protocol v2, with the same ramp and move logic as the firmware, so the dial and speeds behave realistically.
 - The UI connects to `ws://${location.host}/ws`. Using `host` rather than `hostname` keeps the port, so the page works on the mock's port as well as on the device's port 80.
 - Hardware (done by the user): use each phase's "Done when" checks in the roadmap. Serial logs at 115200 baud.

@@ -13,7 +13,7 @@ Push to `origin` only when the user asks. Never push or open PRs against `upstre
 
 Work directly on main (renamed from master); there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
 
-**Current state:** Phase 1 (ESP32 port with v1 parity) is flashed. The UI loads at both addresses and settings persist; motor control is still to be confirmed. `code/` now targets the ESP32 but keeps the v1 structure and protocol until Phase 2.
+**Current state:** Phase 1 is done and confirmed on hardware. Phase 2 (motion engine, protocol v2, new UI) is code-complete and tested against the mock, and waiting on the user's hardware test.
 
 **In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
 
@@ -30,10 +30,11 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
 - `code/Basic/`: minimal sketch that only spins the motor and lights the LED (no Wi-Fi). It's a wiring test, with its own `sketch.yaml` that has to stay in step with the main one.
 - `code/WebTurntable/`: the full firmware (an Arduino sketch folder).
   - `WebTurntable.ino`: `setup()` and `loop()`.
-  - `turntable.{h,cpp}`: pins, the settings struct, and stepping (blocking `delayMicroseconds` inside `loop()`).
-  - `server.{h,cpp}`: Wi-Fi AP, AsyncWebServer with the WebSocket at `/ws`, and settings persistence (NVS via `Preferences`, written after 750 ms idle).
-    - The AsyncTCP callbacks run in their own task, possibly on the other core, while `loop()` runs on core 1.
-    - Treat anything shared between the two as cross-thread.
+  - `config.h`: pins, motor constants, and speed and acceleration limits.
+  - `motion.{h,cpp}`: the motion engine. A GPTimer ISR steps the coils through the GPIO registers, and a 1 kHz ramp task on core 1 sets its interval. Position is in half-steps, positive clockwise. See [FIRMWARE.md](docs/FIRMWARE.md#motion-engine).
+  - `server.{h,cpp}`: Wi-Fi AP, mDNS, AsyncWebServer with the WebSocket at `/ws` (protocol v2), and settings persistence (NVS via `Preferences`).
+    - The AsyncTCP task only parses and validates JSON. Commands are queued and run in `loop()`, so settings are single-threaded.
+    - Saves wait for the motor to be idle, because flash writes pause the step interrupt.
   - `data/`: the web UI served from LittleFS (`index.html`, `script.js`, `style.css`, `favicon.png`). Vanilla JS, no build step.
   - `sketch.yaml`: arduino-cli build profile `esp32` that pins the v2 core and library versions.
 - `STL/`: body, bottom plate, and `top plate` (which is the disk).
@@ -85,11 +86,11 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
   - File-local helpers in an anonymous namespace.
   - Globals prefixed `g_`.
   - A one-line `//` comment above each function.
-  - Indentation is mixed (tabs in `server.cpp`, 4 spaces elsewhere); match the file you are editing.
+  - Indentation: tabs in `server.cpp`, 4 spaces elsewhere. Match the file you are editing.
 - Web UI stays dependency-free: no frameworks and no CDN, because the phone has no internet while it is on the turntable's AP.
 - Keep the flash-wear guard: persist settings only after an idle delay, never on every change.
 
 ## Known issues
 
-- **Uneven speed slider (until Phase 2):** the slider is linear in step delay, so speed is very uneven across it. Half the slider covers about 1.5–2.7 RPM, and the top is about 16.4 RPM.
+- **Not measured yet:** the max reliable speed and the real steps per revolution (Phase 2 hardware checks). Until then, `DEFAULT_MAX_RPM` is 15 and `HALF_STEPS_PER_REV` is the datasheet value.
 - **Fixed in Phase 1, still present at the `v1-esp8266` tag:** the UI sends `2` for CCW, but v1's `RotateDirection::CCW` was `3`. CCW still worked, because any value other than CW steps CCW, but the logs showed `direction=UNKNOWN`.

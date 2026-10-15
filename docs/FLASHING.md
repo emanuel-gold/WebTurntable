@@ -38,8 +38,19 @@ When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `
 ### First flash checklist
 
 1. `tools\flash.cmd all`, then `tools\flash.cmd monitor`. Press the DevKit's **EN** button to restart it and see the whole boot log. It should end with `WiFi AP started - IP: 192.168.4.5` and `mDNS started - http://turntable.local`, and the status LED stays lit.
-2. Join `TURNTABLE`, open `http://turntable.local` (and check `http://192.168.4.5` works too), set a speed, and try CW, OFF and CCW. The log shows each change, and `Settings saved:` about a second later.
-3. Unplug USB, plug it back in, and reload the page. The sliders come back where you left them.
+2. Join `TURNTABLE`, open `http://turntable.local` (and check `http://192.168.4.5` works too), set a speed, and try CW, CCW and STOP. The dial follows the disk, and the log shows `Settings saved:` once the disk has stopped.
+3. Unplug USB, plug it back in, and reload the page. The speed and settings come back where you left them. If the disk was spinning when you unplugged, it starts spinning again.
+
+### Phase 2 hardware checks
+
+Put a piece of tape on the disk and a mark on the body next to it, so you can see whether it comes back to the same spot.
+
+1. **Smooth start and stop:** spin CW at 5 RPM, then STOP. Speed should ramp up and down with no jerk. Try changing direction while spinning (CW, then CCW): it should slow, reverse and speed up again.
+2. **360° return:** press **Set zero here**, then Rotate by `360`. The tape should land back on the mark, and the dial should read `0.0°`.
+3. **10-revolution test:** Rotate by `3600` at 15 RPM (about 40 seconds). If the tape ends up off the mark, note roughly how far and in which direction. That measures the real steps per revolution.
+4. **Max speed:** in Settings, raise Max speed to 30, then spin at 15, 20, 25 and 30 RPM, watching for buzzing, stalling, or the tape drifting off the mark after a Rotate by 360. Note the highest speed that stays clean, in both half-step and full-step mode.
+5. **Two phones:** open the page on two phones (or a phone and the PC). Moves made on one should show live on the other's dial.
+6. **Quick nudges:** press +15° several times quickly. The moves should add up into one smooth motion, and land exactly on a multiple of 15°.
 
 ## Troubleshooting
 
