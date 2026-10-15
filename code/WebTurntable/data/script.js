@@ -1,61 +1,235 @@
+// Web UI for the turntable. Talks the v2 protocol over /ws (see docs/FIRMWARE.md):
+// sends {"cmd": ...} commands and renders every {"type":"state"} the device broadcasts.
+
 var gateway = `ws://${window.location.host}/ws`;
 var websocket;
+var state = null;
+var pointerTurns = 0;       // Unwrapped pointer rotation, so it never spins the long way round
+var lastSpeedSent = 0;
+var toastTimer;
+
+var el = function (id) { return document.getElementById(id); };
 
 function initWebSocket() {
-    console.log('Trying to open a WebSocket connection...');
     websocket = new WebSocket(gateway);
-    websocket.onopen    = onOpen;
-    websocket.onclose   = onClose;
+    websocket.onopen = onOpen;
+    websocket.onclose = onClose;
     websocket.onmessage = onMessage;
 }
 
-function onOpen(event) {
-    console.log('Connection opened');
+function onOpen() {
+    setConnected(true);
 }
 
-function onClose(event) {
-    console.log('Connection closed');
+function onClose() {
+    setConnected(false);
     setTimeout(initWebSocket, 2000);
 }
 
-// Update contents of the webpage
-function onMessage(event) {
-    console.log(event.data);
-    var myObj = JSON.parse(event.data);
-    var keys = Object.keys(myObj);
+function setConnected(connected) {
+    var pill = el('connection');
+    pill.textContent = connected ? 'Connected' : 'Reconnecting…';
+    pill.classList.toggle('offline', !connected);
+    document.body.classList.toggle('offline', !connected);
+}
 
-    for (var i = 0; i < keys.length; i++){
-        var key = keys[i];
-        document.getElementById(key).value = myObj[key];
+function onMessage(event) {
+    var msg = JSON.parse(event.data);
+    if (msg.type === 'state') {
+        state = msg;
+        render();
+    } else if (msg.type === 'error') {
+        showToast(msg.msg);
     }
 }
 
-window.addEventListener('load', onLoad);
+function send(command) {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify(command));
+    } else {
+        showToast('Not connected');
+    }
+}
 
-function onLoad(event) {
+function showToast(text) {
+    var toast = el('toast');
+    toast.textContent = text;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast.classList.remove('show'); }, 2500);
+}
+
+// Don't overwrite a control the user is editing.
+function isEditing(input) {
+    return document.activeElement === input || input.dataset.dragging === 'true';
+}
+
+function render() {
+    var s = state;
+
+    // Dial and readout
+    el('angle').textContent = s.angle.toFixed(1) + '°';
+    var delta = ((s.angle - pointerTurns) % 360 + 540) % 360 - 180;
+    pointerTurns += delta;
+    el('pointer').style.transform = 'rotate(' + pointerTurns + 'deg)';
+
+    var speed = Math.abs(s.speed);
+    var motionText = {
+        idle: 'Stopped',
+        running: 'Spinning',
+        moving: 'Moving',
+        stopping: 'Stopping'
+    }[s.motion] || s.motion;
+    if (s.motion !== 'idle') {
+        motionText += ' · ' + speed.toFixed(1) + ' RPM ' + (s.speed >= 0 ? 'CW' : 'CCW');
+    }
+    el('motion').textContent = motionText;
+
+    // Speed slider: linear in RPM, up to the max speed setting
+    var slider = el('rpm');
+    slider.min = s.limits.minRpm;
+    slider.max = s.settings.maxRpm;
+    if (!isEditing(slider)) {
+        slider.value = s.rpm;
+    }
+    showSpeed(isEditing(slider) ? parseFloat(slider.value) : s.rpm);
+
+    // Direction buttons light up while spinning that way
+    el('run-cw').classList.toggle('active', s.spinning && s.dir === 'cw');
+    el('run-ccw').classList.toggle('active', s.spinning && s.dir === 'ccw');
+
+    // Settings
+    document.querySelectorAll('[data-mode]').forEach(function (button) {
+        var active = button.dataset.mode === s.settings.driveMode;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-checked', active);
+    });
+    setIfIdle(el('accel'), s.settings.accel);
+    setIfIdle(el('max-rpm'), s.settings.maxRpm);
+    el('accel').min = s.limits.minAccel;
+    el('accel').max = s.limits.maxAccel;
+    el('max-rpm').min = s.limits.minRpm;
+    el('max-rpm').max = s.limits.maxRpm;
+
+    el('stop').textContent = s.motion === 'stopping' ? 'HALT NOW' : 'STOP';
+}
+
+function setIfIdle(input, value) {
+    if (!isEditing(input)) {
+        input.value = value;
+    }
+}
+
+function showSpeed(rpm) {
+    el('rpm-value').textContent = rpm.toFixed(1);
+    el('spr-value').textContent = (60 / rpm).toFixed(1);
+}
+
+// Send speed changes while dragging, at most every 100 ms, and always the final value.
+function onSpeedInput(final) {
+    var slider = el('rpm');
+    var rpm = parseFloat(slider.value);
+    showSpeed(rpm);
+    var now = Date.now();
+    if (final || now - lastSpeedSent >= 100) {
+        lastSpeedSent = now;
+        send({ cmd: 'speed', rpm: rpm });
+    }
+}
+
+function readNumber(input) {
+    var value = parseFloat(input.value);
+    if (!isFinite(value)) {
+        showToast('Enter a number');
+        return null;
+    }
+    return value;
+}
+
+function onLoad() {
+    // Dial ticks every 15°, longer every 90°
+    var ticks = el('ticks');
+    for (var deg = 0; deg < 360; deg += 15) {
+        var major = deg % 90 === 0;
+        var rad = deg * Math.PI / 180;
+        var inner = major ? 78 : 84;
+        var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', 100 + inner * Math.sin(rad));
+        line.setAttribute('y1', 100 - inner * Math.cos(rad));
+        line.setAttribute('x2', 100 + 92 * Math.sin(rad));
+        line.setAttribute('y2', 100 - 92 * Math.cos(rad));
+        if (major) {
+            line.setAttribute('class', 'major');
+        }
+        ticks.appendChild(line);
+    }
+
+    var slider = el('rpm');
+    slider.addEventListener('pointerdown', function () { slider.dataset.dragging = 'true'; });
+    slider.addEventListener('input', function () { onSpeedInput(false); });
+    slider.addEventListener('change', function () {
+        slider.dataset.dragging = 'false';
+        onSpeedInput(true);
+    });
+
+    document.querySelectorAll('[data-dir]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            send({ cmd: 'run', dir: button.dataset.dir, rpm: parseFloat(slider.value) });
+        });
+    });
+
+    document.querySelectorAll('[data-nudge]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            send({ cmd: 'moveBy', deg: parseFloat(button.dataset.nudge) });
+        });
+    });
+
+    el('move-by').addEventListener('submit', function (event) {
+        event.preventDefault();
+        var deg = readNumber(el('move-by-deg'));
+        if (deg !== null) {
+            send({ cmd: 'moveBy', deg: deg });
+        }
+    });
+
+    el('move-to').addEventListener('submit', function (event) {
+        event.preventDefault();
+        var deg = readNumber(el('move-to-deg'));
+        if (deg !== null) {
+            send({ cmd: 'moveTo', deg: deg, dir: el('move-to-dir').value });
+        }
+    });
+
+    el('set-zero').addEventListener('click', function () {
+        send({ cmd: 'setZero' });
+    });
+
+    document.querySelectorAll('[data-mode]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            send({ cmd: 'settings', driveMode: button.dataset.mode });
+        });
+    });
+
+    el('accel').addEventListener('change', function () {
+        var value = readNumber(el('accel'));
+        if (value !== null) {
+            send({ cmd: 'settings', accel: value });
+        }
+    });
+
+    el('max-rpm').addEventListener('change', function () {
+        var value = readNumber(el('max-rpm'));
+        if (value !== null) {
+            send({ cmd: 'settings', maxRpm: value });
+        }
+    });
+
+    // STOP ramps down; pressing it again while stopping halts immediately.
+    el('stop').addEventListener('click', function () {
+        send({ cmd: state && state.motion === 'stopping' ? 'halt' : 'stop' });
+    });
+
     initWebSocket();
 }
 
-function UpdateDirection() {
-    var data = {
-        "type": "stepping_direction",
-        "content" : parseInt(document.getElementById('stepping_direction').value, 10),
-    }
-    websocket.send(JSON.stringify(data));
-}
-
-function UpdateSpeed() {
-    var data = {
-        "type": "stepping_speed",
-        "content" : parseInt(document.getElementById('stepping_speed').value, 10),
-    }
-    websocket.send(JSON.stringify(data));
-}
-
-function UpdateMode() {
-    var data = {
-        "type": "stepping_mode",
-        "content" : parseInt(document.getElementById('stepping_mode').value, 10),
-    }
-    websocket.send(JSON.stringify(data));
-}
+window.addEventListener('load', onLoad);
