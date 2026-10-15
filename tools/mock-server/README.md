@@ -26,7 +26,7 @@ The log mirrors the firmware's serial output (connects, commands, and `Settings 
 
 ## Protocols
 
-- **`v1`** (`protocol-v1.js`) emulates the v1 firmware at tag `v1-esp8266`. It applies the same validation as `server.cpp` and broadcasts the full state after every command. CCW from the v1 UI logs as `direction=UNKNOWN`, the same as the real firmware ([known issue](../../CLAUDE.md#known-issues-v1)).
+- **`v1`** (`protocol-v1.js`) emulates the v1-format protocol that `code/WebTurntable` speaks until Phase 2. It applies the same validation as `server.cpp` and broadcasts the full state after every command. It follows the current firmware, where CCW is 2. The `v1-esp8266` tag used 3 and logged the UI's CCW as `direction=UNKNOWN`.
 - **`v2`** is not written yet. Phase 2 adds `protocol-v2.js` for the [v2 protocol](../../docs/FIRMWARE.md#websocket-protocol-v2-draft) and registers it in `PROTOCOLS` in `mock.js`.
 
 A protocol module exports `createDevice({ broadcast, log })`, which returns `{ onConnect, onMessage, onDisconnect, describe, close }`.

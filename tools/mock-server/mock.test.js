@@ -82,7 +82,7 @@ test('broadcasts each change to every client', async () => {
     assert.equal((await a.next()).stepping_speed, 50);
     assert.equal((await b.next()).stepping_speed, 50);
 
-    // The v1 UI sends 2 for CCW; the firmware accepts and echoes it.
+    // The UI sends 2 for CCW.
     b.send({ type: 'stepping_direction', content: 2 });
     assert.equal((await a.next()).stepping_direction, 2);
     assert.equal((await b.next()).stepping_direction, 2);
@@ -100,6 +100,16 @@ test('validates commands like the firmware', async () => {
 
     send({ type: 'stepping_mode', content: 7 });
     assert.equal((await next()).stepping_mode, 0);
+
+    // 3 was CCW in the v1-esp8266 firmware; since the Phase 1 fix it is out of range.
+    send({ type: 'stepping_direction', content: 1 });
+    await next();
+    send({ type: 'stepping_direction', content: 3 });
+    assert.equal((await next()).stepping_direction, 1);
+
+    // Only integers count, as in the firmware.
+    send({ type: 'stepping_speed', content: '50' });
+    assert.equal((await next()).stepping_speed, 100);
 
     // Non-JSON and unknown types get no reply; the next valid command still works.
     ws.send('not json');

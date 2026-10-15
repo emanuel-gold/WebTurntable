@@ -1,5 +1,6 @@
-// Emulates the v1 firmware's WebSocket protocol (code/WebTurntable at tag
-// v1-esp8266): three settings, broadcast to every client after each command.
+// Emulates the firmware's v1 WebSocket protocol, as code/WebTurntable speaks it
+// until Phase 2: three settings, broadcast to every client after each command.
+// Matches the Phase 1 firmware, where CCW is 2 (the v1-esp8266 tag used 3).
 //
 //   client -> device  {"type":"stepping_speed","content":50}
 //   device -> client  {"stepping_direction":1,"stepping_speed":50,"stepping_mode":0}
@@ -8,7 +9,7 @@
 const MAX_DELAY = 20000;
 const MIN_DELAY = 1800;
 const TOTAL_SLIDER_STEPS = 100;
-const DIRECTION = { CW: 0, OFF: 1, CCW: 3 };
+const DIRECTION = { CW: 0, OFF: 1, CCW: 2 };
 const MODE = { FULL: 0, HALF: 1 };
 const SETTINGS_SAVE_DELAY_MS = 750;
 
@@ -26,7 +27,7 @@ export function createDevice({ broadcast, log }) {
 
     const pageContent = () => JSON.stringify(state);
 
-    // v1 steps CW for 0, stops for OFF or speed 0, and steps CCW for anything else.
+    // Steps CW for 0, stops for OFF or speed 0, and steps CCW otherwise.
     function motion() {
         if (state.stepping_speed === 0 || state.stepping_direction === DIRECTION.OFF) {
             return 'stopped';
@@ -42,7 +43,7 @@ export function createDevice({ broadcast, log }) {
 
     // Serial-log style summary plus the speed the v1 motor would actually turn at.
     function describe() {
-        const dirName = { 0: 'CW', 1: 'OFF', 3: 'CCW' }[state.stepping_direction] ?? 'UNKNOWN';
+        const dirName = { 0: 'CW', 1: 'OFF', 2: 'CCW' }[state.stepping_direction] ?? 'UNKNOWN';
         const modeName = state.stepping_mode === MODE.HALF ? 'HALF' : 'FULL';
         return `direction=${dirName}, speed=${state.stepping_speed}, mode=${modeName} (${motion()})`;
     }
@@ -55,7 +56,7 @@ export function createDevice({ broadcast, log }) {
 
     // Store one validated setting, queueing a save only if it changed.
     function apply(key, value) {
-        if (Number.isInteger(value) && state[key] !== value) {
+        if (state[key] !== value) {
             state[key] = value;
             queueSettingsSave();
         }
@@ -70,7 +71,8 @@ export function createDevice({ broadcast, log }) {
             log(`Ignored non-JSON message: ${text.slice(0, 80)}`);
             return;
         }
-        const content = msg?.content;
+        // Like the firmware, anything that isn't an integer becomes -1 and fails the range checks.
+        const content = Number.isInteger(msg?.content) ? msg.content : -1;
 
         switch (msg?.type) {
             case 'stepping_direction':
