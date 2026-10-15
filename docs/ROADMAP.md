@@ -129,6 +129,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 - Capacitive touch controls (start/stop, direction) through the case wall.
 - Lighting control beyond NeoPixels. Examples: a switched or dimmed USB output for a USB light, or a desk lamp on a smart plug (which would need the turntable to join a Wi-Fi network). Needs exploration first.
 - IR shutter for dedicated cameras.
+- Home Wi-Fi mode: the turntable joins the user's network (station mode), so the phone keeps internet. Needs a way to enter the Wi-Fi name and password, and a hostname, since the router assigns the address. Deferred 2026-10-15 to keep setup instant while building.
 - USB-C connector in place of the DevKit's micro-USB, for example a USB-C panel socket in the body's old USB-C slot. v2 ships with micro-USB through the riser.
 
 ## Scrapped
