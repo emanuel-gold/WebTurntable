@@ -29,7 +29,7 @@ Run every command from the repo folder, in PowerShell or Command Prompt.
 - **Dry run:** add `-WhatIf` to compile and build the web UI image without writing anything to the board.
 - **Web UI uploads replace the whole file system.** Anything the firmware stores there (presets, from Phase 3) is erased. Settings kept in NVS survive.
 
-When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `http://192.168.4.5`.
+When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `http://turntable.local`. If the name doesn't resolve (some Android phones), use `http://192.168.4.5`.
 
 ### Motor test (no Wi-Fi)
 
@@ -37,8 +37,8 @@ When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `
 
 ### First flash checklist
 
-1. `tools\flash.cmd all`, then `tools\flash.cmd monitor`. Press the DevKit's **EN** button to restart it and see the whole boot log. It should end with `WiFi AP started - IP: 192.168.4.5`, and the status LED stays lit.
-2. Join `TURNTABLE`, open `http://192.168.4.5`, set a speed, and try CW, OFF and CCW. The log shows each change, and `Settings saved:` about a second later.
+1. `tools\flash.cmd all`, then `tools\flash.cmd monitor`. Press the DevKit's **EN** button to restart it and see the whole boot log. It should end with `WiFi AP started - IP: 192.168.4.5` and `mDNS started - http://turntable.local`, and the status LED stays lit.
+2. Join `TURNTABLE`, open `http://turntable.local` (and check `http://192.168.4.5` works too), set a speed, and try CW, OFF and CCW. The log shows each change, and `Settings saved:` about a second later.
 3. Unplug USB, plug it back in, and reload the page. The sliders come back where you left them.
 
 ## Troubleshooting
@@ -51,6 +51,7 @@ When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `
 | The page doesn't load, or shows some other device's page | Your phone isn't on the `TURNTABLE` network, or it switched back to your home Wi-Fi because `TURNTABLE` has no internet. Rejoin `TURNTABLE`, and stay on it if the phone asks. |
 | `Could not open COM7, the port is busy` | Close whatever has the port open: the serial monitor (this script's or the Arduino IDE's), or another terminal. |
 | The status LED blinks (half a second on, half a second off) and there's no Wi-Fi | The firmware stopped at a startup error. `tools\flash.cmd monitor`, then press **EN**, shows which one. Most often the web UI is missing: run `tools\flash.cmd webui`. |
+| `turntable.local` doesn't load, but `192.168.4.5` does | The phone doesn't support mDNS names (some Android phones), or it's sending lookups over cellular. Use the IP address. |
 | Blank page or 404 at 192.168.4.5 | The web UI isn't on the board. Run `tools\flash.cmd webui`. |
 | The board keeps resetting, and the log shows `Brownout detector was triggered` | Power problem. See [HARDWARE.md](HARDWARE.md#power): the 470 µF capacitor, and a 1 A supply. |
 | PowerShell says running scripts is disabled | Use `tools\flash.cmd`, not `flash.ps1`. The `.cmd` wrapper bypasses the policy for that one run without changing any settings. |

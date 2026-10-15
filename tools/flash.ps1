@@ -258,7 +258,7 @@ try {
             Invoke-Firmware $target
             Invoke-WebUi $target
             if (-not $WhatIfPreference) {
-                Write-Step 'Done. Join the TURNTABLE Wi-Fi network and open http://192.168.4.5'
+                Write-Step 'Done. Join the TURNTABLE Wi-Fi network and open http://turntable.local (or http://192.168.4.5)'
             }
         }
         'monitor' {

@@ -8,6 +8,7 @@
 #include <Preferences.h>
 
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 
@@ -282,6 +283,17 @@ void initWebserver()
 	WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
 	Serial.print("WiFi AP started - IP: ");
 	Serial.println(WiFi.softAPIP());
+
+	// Announce the hostname over mDNS. Not fatal: the IP address still works without it.
+	if (MDNS.begin(MDNS_HOSTNAME))
+	{
+		MDNS.addService("http", "tcp", 80);
+		Serial.printf("mDNS started - http://%s.local\n", MDNS_HOSTNAME);
+	}
+	else
+	{
+		Serial.println("Error: Failed to start mDNS");
+	}
 
 	// Configure WebSocket
 	ws.onEvent(onWsEvent);

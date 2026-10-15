@@ -13,7 +13,7 @@ _Last updated 2026-10-15._
   - The user flashed the Phase 1 firmware and web UI with `tools\flash.cmd all`, holding BOOT. The script's uploads work on hardware.
   - Hardware findings:
     - The board needs BOOT held to enter download mode ([HARDWARE.md](HARDWARE.md#download-mode-and-the-boot-button)).
-    - The access point moved from 192.168.4.1 to 192.168.4.5, because the user's router uses .1. That needs one more firmware flash.
+    - The access point moved from 192.168.4.1 to 192.168.4.5, because the user's router uses .1. The firmware also announces `turntable.local` (mDNS). Both need one more firmware flash.
   - Still to confirm, from the [first flash checklist](FLASHING.md#first-flash-checklist): the UI drives the motor at 192.168.4.5, and settings survive a power cycle.
 - **Next:**
   - Finish the Phase 1 hardware test, then Phase 2.
@@ -156,6 +156,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-14 | CCW fixed by making `RotateDirection::CCW` 2, the value the UI already sends. The mock server follows the fixed firmware. |
 | 2026-10-14 | Serial logs at 115200 baud, matching the ESP32 boot messages and `tools\flash.cmd monitor`. |
 | 2026-10-15 | The access point address is 192.168.4.5 (set with `softAPConfig`), because the user's home router is 192.168.4.1. Phones get leases from 192.168.4.6. |
+| 2026-10-15 | The firmware announces `turntable.local` over mDNS (ESPmDNS, part of the core), so phones can use a name. The IP address stays as the fallback for phones without mDNS. Adds about 36 KB of flash (53% total). |
 | 2026-10-14 | Power and programming go through the DevKit's micro-USB, via an opening in the riser. A USB-C connector is a backlog item. |
 | 2026-10-14 | The shutter test target is an iPhone 16 with the default Camera app. |
 | 2026-10-14 | The ESP8266 version is frozen at tag `v1-esp8266` and not maintained. |

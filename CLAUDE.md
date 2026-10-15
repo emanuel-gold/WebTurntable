@@ -2,7 +2,7 @@
 
 ## Project
 
-WebTurntable is a small motorized turntable (100 mm disk, 28BYJ-48 stepper, ULN2003 driver) controlled from a phone browser. The microcontroller runs an open Wi-Fi access point (`TURNTABLE`) and serves a web UI at `http://192.168.4.5`. The UI talks to the firmware over a WebSocket. The enclosure is FDM-printed in PLA; STLs are in `STL/`, and the originals are on MakerWorld (model 572900).
+WebTurntable is a small motorized turntable (100 mm disk, 28BYJ-48 stepper, ULN2003 driver) controlled from a phone browser. The microcontroller runs an open Wi-Fi access point (`TURNTABLE`) and serves a web UI at `http://turntable.local` (mDNS) or `http://192.168.4.5`. The UI talks to the firmware over a WebSocket. The enclosure is FDM-printed in PLA; STLs are in `STL/`, and the originals are on MakerWorld (model 572900).
 
 This repo is a fork:
 

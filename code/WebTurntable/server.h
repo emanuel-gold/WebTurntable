@@ -5,6 +5,9 @@
 constexpr const char* WIFI_SSID       = "TURNTABLE";
 constexpr const char* WIFI_PASSWORD   = "";
 
+// mDNS hostname, so the UI is also at http://turntable.local
+constexpr const char* MDNS_HOSTNAME   = "turntable";
+
 // Initialize the webserver
 void initWebserver();
 
