@@ -1,5 +1,5 @@
 # arduino-cli build profiles. They pin the core and library versions so a
-# compile check gives the same result on either PC:
+# compile check gives the same result every time:
 #
 #   arduino-cli compile --profile esp32 code/WebTurntable
 #

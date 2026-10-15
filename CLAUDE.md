@@ -11,7 +11,7 @@ This repo is a fork:
 
 Push to `origin` only when the user asks. Never push or open PRs against `upstream`.
 
-Work directly on master; there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
+Work directly on main (renamed from master); there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
 
 **Current state:** Phase 1 (ESP32 port with v1 parity) is flashed on the DevKit. The UI test at 192.168.4.5 is still pending. `code/` now targets the ESP32 but keeps the v1 structure and protocol until Phase 2.
 
@@ -21,8 +21,7 @@ Work directly on master; there are no feature branches. v1 (ESP8266, Wemos D1 mi
 
 1. Run `git pull` and check `git status`.
 2. Read the **Status** section of [docs/ROADMAP.md](docs/ROADMAP.md). It says what is done and what comes next.
-3. Check which tools this PC has before planning around them (see [Environment](#environment)).
-4. If the next task depends on an unanswered roadmap open question, ask the user first.
+3. If the next task depends on an unanswered roadmap open question, ask the user first.
 
 As work lands, tick roadmap checkboxes, update its Status section, and record decisions in its Decisions table.
 
@@ -71,17 +70,12 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
 
 ## Environment
 
-- The user works from two Windows 11 PCs, and the tooling differs:
-  - One PC has no CAD software and no Arduino toolchain.
-  - The other has Blender and the Arduino tooling.
-- At session start, check what exists here (`arduino-cli version`, the Arduino IDE, `blender --version`, `python -c "import numpy"`, `node --version`) rather than assuming. Executables may be installed but not on PATH. On the build PC, the Arduino IDE (2.2.1) is under `%LOCALAPPDATA%\Programs\Arduino IDE` and Blender under `C:\Program Files\Blender Foundation\`.
+- Windows 11, with the Arduino tooling and Blender installed. Executables may not be on PATH: the Arduino IDE (2.2.1) is under `%LOCALAPPDATA%\Programs\Arduino IDE` and Blender under `C:\Program Files\Blender Foundation\`.
 - The mock server's tests need Node 22.4 or newer, for the built-in WebSocket client.
-- The user handles syncing between the PCs. Don't raise it, and don't ask about pushing for the other PC's sake.
-- Claude's auto-memory is stored per machine and doesn't travel between PCs. Put anything durable in this file or in `docs/`.
 - **STL tools:**
   - Use `python tools/stl_inspect.py` (needs only numpy) to measure STLs and render cross-sections to PNG, then view the PNGs.
   - Use `manifold3d` for mesh booleans. All three original STLs are watertight. Install it in a `.venv`, not globally.
-  - Generate enclosure parts with Python scripts so they build on either PC. Where Blender is installed, use it for visual checks; it also runs headless (`blender --background --python script.py`) to render previews.
+  - Generate enclosure parts with Python scripts so they rebuild from source. Use Blender for visual checks; it also runs headless (`blender --background --python script.py`) to render previews.
 - STL frame: origin at the top-center of the body deck, +Z up, in mm. The body spans z −21.5 to 0, the disk z 0 to 9.5, and the bottom plate z −23.5 to −21.
 
 ## Conventions

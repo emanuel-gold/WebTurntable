@@ -19,7 +19,7 @@ _Last updated 2026-10-15._
   - Finish the Phase 1 hardware test, then Phase 2.
   - Phase E needs [open questions](#open-questions) 1–2.
 - **Working style:**
-  - Work on master. v1 stays reproducible at tag `v1-esp8266`.
+  - Work on main. v1 stays reproducible at tag `v1-esp8266`.
   - Commit per checklist item or logical step.
   - Update this Status section at the end of each session.
 
@@ -46,8 +46,8 @@ Homing would add a zero that survives power cycles and turning the disk by hand.
 
 ## Phase 0: Prep
 
-- [x] Tag master `v1-esp8266` before any v2 code change, so D1 mini builds stay reproducible.
-- [x] Get arduino-cli working on the build PC (standalone, or the copy bundled with Arduino IDE 2) with ESP32 core 3.x and the v2 libraries ([FIRMWARE.md](FIRMWARE.md#toolchain)). Pin core and library versions in `sketch.yaml` so firmware can be compile-checked before flashing.
+- [x] Tag main `v1-esp8266` before any v2 code change, so D1 mini builds stay reproducible.
+- [x] Get arduino-cli working (standalone, or the copy bundled with Arduino IDE 2) with ESP32 core 3.x and the v2 libraries ([FIRMWARE.md](FIRMWARE.md#toolchain)). Pin core and library versions in `sketch.yaml` so firmware can be compile-checked before flashing.
 - [x] Add a Node mock server (`tools/mock-server/`) that serves `data/` and fakes the WebSocket protocol, so the UI can be built and tested in a browser without hardware.
 - [x] Answer the planning questions: board variant, wiring method, USB/power, shutter test phone, the ESP8266 version, and how to flash (see Decisions, 2026-10-14).
 - [x] Flash script and instructions for arduino-cli: `tools\flash.cmd`, [FLASHING.md](FLASHING.md).
@@ -146,7 +146,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-13 | Captive portal scrapped. OTA comes after the MVP and before backlog items. |
 | 2026-10-14 | Toolchain pinned in the `esp32` profile of `code/WebTurntable/sketch.yaml`: core 3.3.12, ESP Async WebServer 3.12.1, Async TCP 3.5.0, ArduinoJson 7.4.3. The arduino-cli 0.34.0 bundled with IDE 2.2.1 is enough; no standalone install. |
 | 2026-10-14 | Keep the Minimal SPIFFS scheme even though core 3.x gives it 128 KB of file system, not 190 KB. If the UI outgrows it, use gzipped assets or a custom `partitions.csv`. |
-| 2026-10-14 | The mock server uses only Node built-ins, including a minimal WebSocket implementation, so neither PC needs `npm install`. It emulates v1 now; v2 comes in Phase 2. |
+| 2026-10-14 | The mock server uses only Node built-ins, including a minimal WebSocket implementation, so it needs no `npm install`. It emulates v1 now; v2 comes in Phase 2. |
 | 2026-10-14 | Board: 30-pin DOIT DevKit V1, 51.45 × 28.33 mm, 13 mm from the pin tips to the top of the shield. Headers are soldered, and there are four corner mounting holes 23.37 apart across the width. |
 | 2026-10-14 | Wiring: crimped Dupont housings on the existing header pins of both the DevKit and the ULN2003 ([HARDWARE.md](HARDWARE.md#dupont-harness)). Measured from the top of the shield to the end of a housing: just under 22. With wire bend room, the riser is about 31. |
 | 2026-10-14 | The DevKit's mounting holes are Ø3, for M2.5 screws into posts on the bottom plate. |
@@ -159,7 +159,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-14 | The shutter test target is an iPhone 16 with the default Camera app. |
 | 2026-10-14 | The ESP8266 version is frozen at tag `v1-esp8266` and not maintained. |
 | 2026-10-14 | Flash v2 with arduino-cli through `tools\flash.cmd`, not the Arduino IDE, to avoid a second ~6.5 GB core install ([FLASHING.md](FLASHING.md)). |
-| 2026-10-14 | Single branch: v2 work goes on master. The `v2-esp32` branch was merged and deleted. |
+| 2026-10-14 | Single branch: v2 work goes on main (renamed from master). The `v2-esp32` branch was merged and deleted. |
 
 ## Open questions
 
