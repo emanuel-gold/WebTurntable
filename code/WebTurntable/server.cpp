@@ -1,7 +1,8 @@
 #include "server.h"
-#include "turntable.h"
+#include "config.h"
+#include "motion.h"
 
-#include <atomic>
+#include <cmath>
 
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -28,186 +29,477 @@ namespace
 	constexpr char SETTINGS_KEY[] = "settings";
 	constexpr unsigned long SETTINGS_SAVE_DELAY_MS = 750;
 	constexpr unsigned long WS_CLEANUP_INTERVAL_MS = 1000;
+	constexpr unsigned long STATE_INTERVAL_MS = 100;
 
-	// Set from the AsyncTCP task, which can run on the other core, and read in loop()
-	std::atomic<bool> settingsDirty{false};
-	std::atomic<unsigned long> lastSettingsChangeMs{0};
+	// Last-used state, persisted to NVS. Bump MAGIC whenever the layout changes.
+	struct TurntableSettings
+	{
+		static constexpr uint32_t MAGIC = 0x54544232;   // "TTB2"
+
+		uint32_t magic        = MAGIC;
+		float rpm             = DEFAULT_RPM;
+		Direction dir         = Direction::CW;
+		bool spinning         = false;    // Resume spinning after a power cycle, as v1 did
+		DriveMode driveMode   = DriveMode::Half;
+		float maxRpm          = DEFAULT_MAX_RPM;
+		float accel           = DEFAULT_ACCEL;
+	};
+
+	// Only touched from loop(), which runs every queued command
+	TurntableSettings settings;
+	bool settingsDirty = false;
+	unsigned long lastSettingsChangeMs = 0;
+	// Last move target, kept in degrees so repeated Rotate by presses don't add up rounding errors
+	double moveTargetDeg = 0.0;
+	int32_t moveTargetPos = 0;
+
+	// Commands parsed in the AsyncTCP task and run in loop(), so all state stays on one thread
+	enum class CommandType : uint8_t
+	{
+		Speed,
+		Run,
+		Stop,
+		Halt,
+		MoveBy,
+		MoveTo,
+		SetZero,
+		Settings
+	};
+
+	// Which way a Go to angle move turns
+	enum class MoveDirection : uint8_t
+	{
+		Shortest,
+		CW,
+		CCW
+	};
+
+	// One validated command from a client
+	struct Command
+	{
+		CommandType type;
+		float value;            // RPM for Speed and Run, degrees for MoveBy and MoveTo
+		bool hasValue;
+		Direction dir;
+		MoveDirection moveDir;
+		bool hasDriveMode;
+		DriveMode driveMode;
+		bool hasMaxRpm;
+		float maxRpm;
+		bool hasAccel;
+		float accel;
+	};
+
+	QueueHandle_t commandQueue = nullptr;
 
 	// Error handler that halts execution and blinks the LED indefinitely
-    void haltWithErrorIndicator()
-    {
-        Serial.println("Critical error: Halting execution");
-        while (true)
-        {
-            digitalWrite(LED_PIN, HIGH);
-            delay(500);
-            digitalWrite(LED_PIN, LOW);
-            delay(500);
-        }
-    }
-
-	// Helper to convert rotation direction enum to string for logging
-    const char* directionToString(uint8_t direction)
-    {
-        switch (direction)
-        {
-            case RotateDirection::CW:
-                return "CW";
-            case RotateDirection::OFF:
-                return "OFF";
-            case RotateDirection::CCW:
-                return "CCW";
-            default:
-                return "UNKNOWN";
-        }
-    }
-
-	// Helper to convert stepping mode enum to string for logging
-    const char* modeToString(uint8_t mode)
-    {
-        switch (mode)
-        {
-            case RotateMode::FULL_STEPPING:
-                return "FULL";
-            case RotateMode::HALF_STEPPING:
-                return "HALF";
-            default:
-                return "UNKNOWN";
-        }
-    }
-
-	// Log information about the current turntable state to serial console
-    void logTurntableStatus(const char* context)
-    {
-        Serial.print(context);
-        Serial.print(" direction=");
-        Serial.print(directionToString(g_turntable.direction));
-        Serial.print(", speed=");
-        Serial.print(g_turntable.sliderSpeed);
-        Serial.print(", mode=");
-        Serial.println(modeToString(g_turntable.mode));
-    }
-
-	// Mark settings as dirty and start the save delay timer
-    void queueSettingsSave()
-    {
-        // Time first, so loop() never pairs the new flag with an old time and skips the delay
-        lastSettingsChangeMs = millis();
-        settingsDirty = true;
-    }
-
-	// Save the current turntable settings to flash memory
-    void saveTurntableState()
-    {
-        // Clear the flag before copying, so a change that lands mid-save queues another save
-        settingsDirty = false;
-        const TurntableSettings snapshot = g_turntable;
-
-        size_t bytesWritten = preferences.putBytes(SETTINGS_KEY, &snapshot, sizeof(snapshot));
-        if (bytesWritten != sizeof(snapshot))
-        {
-            // Not retried until the next change, so a failing flash isn't hammered
-            Serial.println("Error: Failed to write settings");
-            return;
-        }
-
-        logTurntableStatus("Settings saved:");
-    }
-
-	// Load turntable settings from flash memory, returns true if successful
-    bool loadTurntableState()
-    {
-        if (!preferences.isKey(SETTINGS_KEY))
-        {
-            Serial.println("No saved settings found");
-            return false;
-        }
-
-        TurntableSettings loadedSettings;
-        size_t bytesRead = preferences.getBytes(SETTINGS_KEY, &loadedSettings, sizeof(loadedSettings));
-
-        // Validate size and magic number
-        if (bytesRead != sizeof(loadedSettings) || loadedSettings.magic != TurntableSettings::MAGIC)
-        {
-            Serial.println("Error: Saved settings invalid");
-            return false;
-        }
-
-        // Apply loaded settings
-        g_turntable = loadedSettings;
-        logTurntableStatus("Settings loaded:");
-        return true;
-    }
-
-	// Serialize the current settings in the format the web UI expects
-	String pageContent()
+	void haltWithErrorIndicator()
 	{
-		JsonDocument page;
-		page["stepping_direction"] = static_cast<uint8_t>(g_turntable.direction);
-		page["stepping_speed"] = g_turntable.sliderSpeed;
-		page["stepping_mode"] = static_cast<uint8_t>(g_turntable.mode);
-
-		String jsonString;
-		serializeJson(page, jsonString);
-		return jsonString;
+		Serial.println("Critical error: Halting execution");
+		motionHalt();
+		while (true)
+		{
+			digitalWrite(LED_PIN, HIGH);
+			delay(500);
+			digitalWrite(LED_PIN, LOW);
+			delay(500);
+		}
 	}
 
-	// Update the connected clients
-	void updatePage()
+	// Protocol name for a direction
+	const char* directionName(Direction dir)
 	{
-		ws.textAll(pageContent());
+		return dir == Direction::CW ? "cw" : "ccw";
+	}
+
+	// Protocol name for a drive mode
+	const char* driveModeName(DriveMode mode)
+	{
+		return mode == DriveMode::Full ? "full" : "half";
+	}
+
+	// Protocol name for a motion state
+	const char* motionStateName(MotionState state)
+	{
+		switch (state)
+		{
+			case MotionState::Running:
+				return "running";
+			case MotionState::Moving:
+				return "moving";
+			case MotionState::Stopping:
+				return "stopping";
+			default:
+				return "idle";
+		}
+	}
+
+	// Keep a value inside [low, high]
+	float clampFloat(float value, float low, float high)
+	{
+		return value < low ? low : (value > high ? high : value);
+	}
+
+	// Log the persisted settings to the serial console
+	void logSettings(const char* context)
+	{
+		Serial.printf("%s rpm=%.2f, dir=%s, spinning=%d, mode=%s, maxRpm=%.1f, accel=%.1f\n",
+			context, settings.rpm, directionName(settings.dir), settings.spinning,
+			driveModeName(settings.driveMode), settings.maxRpm, settings.accel);
+	}
+
+	// Mark settings as dirty and start the save delay timer
+	void queueSettingsSave()
+	{
+		settingsDirty = true;
+		lastSettingsChangeMs = millis();
+	}
+
+	// Save the current turntable settings to flash memory
+	void saveTurntableState()
+	{
+		settingsDirty = false;
+		size_t bytesWritten = preferences.putBytes(SETTINGS_KEY, &settings, sizeof(settings));
+		if (bytesWritten != sizeof(settings))
+		{
+			// Not retried until the next change, so a failing flash isn't hammered
+			Serial.println("Error: Failed to write settings");
+			return;
+		}
+		logSettings("Settings saved:");
+	}
+
+	// Load turntable settings from flash memory, returns true if successful
+	bool loadTurntableState()
+	{
+		if (!preferences.isKey(SETTINGS_KEY))
+		{
+			Serial.println("No saved settings found");
+			return false;
+		}
+
+		TurntableSettings loaded;
+		size_t bytesRead = preferences.getBytes(SETTINGS_KEY, &loaded, sizeof(loaded));
+		if (bytesRead != sizeof(loaded) || loaded.magic != TurntableSettings::MAGIC)
+		{
+			Serial.println("Saved settings are from another version, using defaults");
+			return false;
+		}
+
+		// Clamp everything, so a bad value can't drive the motor too hard
+		loaded.maxRpm = clampFloat(loaded.maxRpm, MIN_RPM, MAX_RPM_LIMIT);
+		loaded.rpm = clampFloat(loaded.rpm, MIN_RPM, loaded.maxRpm);
+		loaded.accel = clampFloat(loaded.accel, MIN_ACCEL, MAX_ACCEL);
+		loaded.dir = loaded.dir == Direction::CCW ? Direction::CCW : Direction::CW;
+		loaded.driveMode = loaded.driveMode == DriveMode::Full ? DriveMode::Full : DriveMode::Half;
+		settings = loaded;
+		logSettings("Settings loaded:");
+		return true;
+	}
+
+	// Value rounded to a fixed number of decimals, so JSON stays short. A String, so the
+	// document keeps its own copy.
+	SerializedValue<String> roundedJson(float value, unsigned int decimals)
+	{
+		return serialized(String(value, decimals));
+	}
+
+	// Serialize the current state for the web UI
+	String stateJson()
+	{
+		const MotionStatus status = motionStatus();
+
+		JsonDocument doc;
+		doc["type"] = "state";
+		doc["motion"] = motionStateName(status.state);
+		doc["angle"] = roundedJson(status.angleDeg, 1);
+		doc["speed"] = roundedJson(status.speedRpm, 2);
+		doc["rpm"] = roundedJson(settings.rpm, 2);
+		doc["dir"] = directionName(settings.dir);
+		doc["spinning"] = settings.spinning;
+
+		JsonObject current = doc["settings"].to<JsonObject>();
+		current["driveMode"] = driveModeName(settings.driveMode);
+		current["maxRpm"] = roundedJson(settings.maxRpm, 1);
+		current["accel"] = roundedJson(settings.accel, 1);
+
+		JsonObject limits = doc["limits"].to<JsonObject>();
+		limits["minRpm"] = MIN_RPM;
+		limits["maxRpm"] = MAX_RPM_LIMIT;
+		limits["minAccel"] = MIN_ACCEL;
+		limits["maxAccel"] = MAX_ACCEL;
+
+		String json;
+		serializeJson(doc, json);
+		return json;
+	}
+
+	// Send the state to every connected client
+	void broadcastState()
+	{
+		ws.textAll(stateJson());
+	}
+
+	// Tell one client its command was rejected
+	void sendError(AsyncWebSocketClient *client, const char *message)
+	{
+		JsonDocument doc;
+		doc["type"] = "error";
+		doc["msg"] = message;
+		String json;
+		serializeJson(doc, json);
+		client->text(json);
+	}
+
+	// Read a "cw"/"ccw" field; returns false if it's present but invalid
+	bool parseDirection(JsonVariantConst value, Direction &dir)
+	{
+		if (value == "cw")
+		{
+			dir = Direction::CW;
+			return true;
+		}
+		if (value == "ccw")
+		{
+			dir = Direction::CCW;
+			return true;
+		}
+		return false;
+	}
+
+	// Turn a JSON message into a command; on failure, message says why
+	bool parseCommand(JsonDocument &json, Command &command, const char *&message)
+	{
+		command = {};
+		const JsonVariantConst cmd = json["cmd"];
+
+		if (cmd == "speed" || cmd == "run")
+		{
+			command.type = cmd == "speed" ? CommandType::Speed : CommandType::Run;
+			command.hasValue = json["rpm"].is<float>();
+			command.value = json["rpm"] | 0.0f;
+			if (command.type == CommandType::Speed && !command.hasValue)
+			{
+				message = "speed needs a number rpm";
+				return false;
+			}
+			if (command.type == CommandType::Run && !parseDirection(json["dir"], command.dir))
+			{
+				message = "run needs dir cw or ccw";
+				return false;
+			}
+			return true;
+		}
+		if (cmd == "stop" || cmd == "halt" || cmd == "setZero")
+		{
+			command.type = cmd == "stop" ? CommandType::Stop : (cmd == "halt" ? CommandType::Halt : CommandType::SetZero);
+			return true;
+		}
+		if (cmd == "moveBy" || cmd == "moveTo")
+		{
+			command.type = cmd == "moveBy" ? CommandType::MoveBy : CommandType::MoveTo;
+			if (!json["deg"].is<float>() || !std::isfinite(json["deg"].as<float>()))
+			{
+				message = "move needs a number deg";
+				return false;
+			}
+			command.value = json["deg"].as<float>();
+			command.moveDir = MoveDirection::Shortest;
+			const JsonVariantConst dir = json["dir"];
+			if (dir == "cw")
+			{
+				command.moveDir = MoveDirection::CW;
+			}
+			else if (dir == "ccw")
+			{
+				command.moveDir = MoveDirection::CCW;
+			}
+			else if (!dir.isNull() && dir != "shortest")
+			{
+				message = "dir must be shortest, cw or ccw";
+				return false;
+			}
+			return true;
+		}
+		if (cmd == "settings")
+		{
+			command.type = CommandType::Settings;
+			const JsonVariantConst mode = json["driveMode"];
+			if (!mode.isNull())
+			{
+				if (mode != "half" && mode != "full")
+				{
+					message = "driveMode must be half or full";
+					return false;
+				}
+				command.hasDriveMode = true;
+				command.driveMode = mode == "full" ? DriveMode::Full : DriveMode::Half;
+			}
+			command.hasMaxRpm = json["maxRpm"].is<float>();
+			command.maxRpm = json["maxRpm"] | 0.0f;
+			command.hasAccel = json["accel"].is<float>();
+			command.accel = json["accel"] | 0.0f;
+			return true;
+		}
+
+		message = "unknown command";
+		return false;
+	}
+
+	// Run one command. Called from loop() only.
+	void executeCommand(const Command &command)
+	{
+		const MotionStatus status = motionStatus();
+
+		switch (command.type)
+		{
+			case CommandType::Speed:
+				settings.rpm = clampFloat(command.value, MIN_RPM, settings.maxRpm);
+				if (settings.spinning)
+				{
+					motionRun(settings.rpm, settings.dir);
+				}
+				queueSettingsSave();
+				break;
+
+			case CommandType::Run:
+				if (command.hasValue)
+				{
+					settings.rpm = clampFloat(command.value, MIN_RPM, settings.maxRpm);
+				}
+				settings.dir = command.dir;
+				settings.spinning = true;
+				// Saves wait for idle (flash writes pause the step timer), so a spin that
+				// starts from rest is saved first, to resume after a power cycle
+				if (status.state == MotionState::Idle)
+				{
+					saveTurntableState();
+				}
+				else
+				{
+					queueSettingsSave();
+				}
+				motionRun(settings.rpm, settings.dir);
+				break;
+
+			case CommandType::Stop:
+			case CommandType::Halt:
+				if (settings.spinning)
+				{
+					settings.spinning = false;
+					queueSettingsSave();
+				}
+				if (command.type == CommandType::Halt)
+				{
+					motionHalt();
+				}
+				else
+				{
+					motionStop();
+				}
+				break;
+
+			case CommandType::MoveBy:
+			case CommandType::MoveTo:
+			{
+				// Work in unwrapped degrees from zero. Build on the last target while it's
+				// unfinished or the disk still sits on it, so quick presses add up exactly.
+				const bool onLastTarget = status.state == MotionState::Moving || status.position == moveTargetPos;
+				const double here = motionHalfStepsToDegrees(status.position);
+				double targetDeg;
+				if (command.type == CommandType::MoveBy)
+				{
+					targetDeg = (onLastTarget ? moveTargetDeg : here) + command.value;
+				}
+				else
+				{
+					// Clockwise distance to the target angle, then pick the way round
+					double delta = fmod(command.value - status.angleDeg, 360.0);
+					if (delta < 0.0)
+					{
+						delta += 360.0;
+					}
+					if (command.moveDir == MoveDirection::Shortest && delta > 180.0)
+					{
+						delta -= 360.0;
+					}
+					else if (command.moveDir == MoveDirection::CCW && delta > 0.0)
+					{
+						delta -= 360.0;
+					}
+					targetDeg = here + delta;
+				}
+				if (settings.spinning)
+				{
+					settings.spinning = false;
+					queueSettingsSave();
+				}
+				moveTargetDeg = targetDeg;
+				moveTargetPos = motionDegreesToHalfSteps(targetDeg);
+				motionMoveTo(moveTargetPos, settings.rpm);
+				break;
+			}
+
+			case CommandType::SetZero:
+				motionSetZero();
+				moveTargetDeg = 0.0;
+				moveTargetPos = 0;
+				break;
+
+			case CommandType::Settings:
+				if (command.hasDriveMode)
+				{
+					settings.driveMode = command.driveMode;
+					motionSetDriveMode(settings.driveMode);
+				}
+				if (command.hasMaxRpm)
+				{
+					settings.maxRpm = clampFloat(command.maxRpm, MIN_RPM, MAX_RPM_LIMIT);
+					if (settings.rpm > settings.maxRpm)
+					{
+						settings.rpm = settings.maxRpm;
+						if (settings.spinning)
+						{
+							motionRun(settings.rpm, settings.dir);
+						}
+					}
+				}
+				if (command.hasAccel)
+				{
+					settings.accel = clampFloat(command.accel, MIN_ACCEL, MAX_ACCEL);
+					motionSetAcceleration(settings.accel);
+				}
+				queueSettingsSave();
+				break;
+		}
 	}
 
 	// Handle incoming WebSocket messages from clients
-	void handleClientMessage(void *arg, uint8_t *data, size_t len)
+	void handleClientMessage(AsyncWebSocketClient *client, void *arg, uint8_t *data, size_t len)
 	{
 		AwsFrameInfo *info = (AwsFrameInfo*)arg;
-		if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT)
+		if (!(info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT))
 		{
-			JsonDocument jsonData;
-			if (deserializeJson(jsonData, reinterpret_cast<const char*>(data), len))
-			{
-				Serial.println("Ignored malformed message");
-				return;
-			}
+			return;
+		}
 
-			// Anything that isn't an integer becomes -1 and fails the range checks
-			const int content = jsonData["content"] | -1;
+		JsonDocument json;
+		if (deserializeJson(json, reinterpret_cast<const char*>(data), len))
+		{
+			sendError(client, "malformed JSON");
+			return;
+		}
 
-			// Handle stepping direction change
-			if (jsonData["type"] == "stepping_direction")
-			{
-				if (content >= RotateDirection::CW && content <= RotateDirection::CCW && g_turntable.direction != content)
-				{
-					g_turntable.direction = (RotateDirection) content;
-					queueSettingsSave();
-				}
-				updatePage();
-			}
-			// Handle speed/slider change
-			else if (jsonData["type"] == "stepping_speed")
-			{
-				if (content >= 0)
-				{
-					uint16_t sliderSpeed = content > TOTAL_SLIDER_STEPS ? TOTAL_SLIDER_STEPS : content;
-					if (g_turntable.sliderSpeed != sliderSpeed)
-					{
-						g_turntable.sliderSpeed = sliderSpeed;
-						queueSettingsSave();
-					}
-				}
-				updatePage();
-			}
-			// Handle stepping mode change
-			else if (jsonData["type"] == "stepping_mode")
-			{
-				if (content >= RotateMode::FULL_STEPPING && content <= RotateMode::HALF_STEPPING && g_turntable.mode != content)
-				{
-					g_turntable.mode = (RotateMode) content;
-					queueSettingsSave();
-				}
-				updatePage();
-			}
+		Command command;
+		const char *message = nullptr;
+		if (!parseCommand(json, command, message))
+		{
+			sendError(client, message);
+			return;
+		}
+		if (xQueueSend(commandQueue, &command, 0) != pdTRUE)
+		{
+			sendError(client, "busy, try again");
 		}
 	}
 
@@ -217,44 +509,29 @@ namespace
 		switch (type)
 		{
 		case WS_EVT_CONNECT:
-			Serial.println("Client connected");
-			logTurntableStatus("Current state:");
-			client->text(pageContent());
+			Serial.printf("Client %lu connected\n", (unsigned long)client->id());
+			client->text(stateJson());
 			break;
 
 		case WS_EVT_DISCONNECT:
-			Serial.println("Client disconnected");
+			Serial.printf("Client %lu disconnected\n", (unsigned long)client->id());
 			break;
 
 		case WS_EVT_DATA:
-			handleClientMessage(arg, data, len);
+			handleClientMessage(client, arg, data, len);
 			break;
 
 		default:
 			break;
 		}
 	}
-
-	// Send main page HTML
-	void onIndexRequest(AsyncWebServerRequest *request) 
-	{
-		IPAddress remote_ip = request->client()->remoteIP();
-		Serial.println("[" + remote_ip.toString() + "] HTTP GET request of " + request->url());
-		request->send(LittleFS, "/index.html", "text/html");
-	}
-
-	// Send style sheet
-	void onCSSRequest(AsyncWebServerRequest *request) 
-	{
-		IPAddress remote_ip = request->client()->remoteIP();
-		Serial.println("[" + remote_ip.toString() + "] HTTP GET request of " + request->url());
-		request->send(LittleFS, "/style.css", "text/css");
-	}
 }
 
 // Initialize the web server and load saved settings from flash
 void initWebserver()
 {
+	commandQueue = xQueueCreate(16, sizeof(Command));
+
 	// Initialize file system
 	if (!LittleFS.begin())
 	{
@@ -267,13 +544,19 @@ void initWebserver()
 		haltWithErrorIndicator();
 	}
 
-	// Load persisted settings from flash
+	// Load persisted settings from flash and apply them
 	if (!preferences.begin(SETTINGS_NAMESPACE, false))
 	{
 		Serial.println("Error: Failed to open settings storage (NVS)");
 		haltWithErrorIndicator();
 	}
 	loadTurntableState();
+	motionSetDriveMode(settings.driveMode);
+	motionSetAcceleration(settings.accel);
+	if (settings.spinning)
+	{
+		motionRun(settings.rpm, settings.dir);
+	}
 
 	// Setup WiFi access point, with its address set first so DHCP hands out matching leases
 	if (!WiFi.softAPConfig(AP_IP, AP_IP, AP_SUBNET))
@@ -298,20 +581,51 @@ void initWebserver()
 	// Configure WebSocket
 	ws.onEvent(onWsEvent);
 	server.addHandler(&ws);
-	
-	// Configure HTTP routes
-	server.on("/", HTTP_GET, onIndexRequest);
-	server.on("/style.css", HTTP_GET, onCSSRequest);
 
-	// Serve static files from LittleFS
-	server.serveStatic("/", LittleFS, "/");
+	// Serve the web UI from LittleFS
+	server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 	server.begin();
 }
 
-// Handle settings storage with delayed write to flash to minimize wear
+// Run queued commands from the web UI, then tell every client the new state
+void handleCommands()
+{
+	Command command;
+	bool ranCommand = false;
+	while (xQueueReceive(commandQueue, &command, 0) == pdTRUE)
+	{
+		executeCommand(command);
+		ranCommand = true;
+	}
+	if (ranCommand)
+	{
+		broadcastState();
+	}
+}
+
+// Broadcast the state 10 times a second while the disk moves, and once when it stops
+void handleStateBroadcast()
+{
+	static unsigned long lastBroadcastMs = 0;
+	static MotionState lastState = MotionState::Idle;
+	if (millis() - lastBroadcastMs >= STATE_INTERVAL_MS)
+	{
+		lastBroadcastMs = millis();
+		const MotionState state = motionStatus().state;
+		if (state != MotionState::Idle || state != lastState)
+		{
+			broadcastState();
+		}
+		lastState = state;
+	}
+}
+
+// Save settings after an idle delay to minimize flash wear. Waits while the disk moves,
+// because flash writes pause the step timer.
 void handleSettingsStorage()
 {
-	if (settingsDirty && millis() - lastSettingsChangeMs >= SETTINGS_SAVE_DELAY_MS)
+	if (settingsDirty && millis() - lastSettingsChangeMs >= SETTINGS_SAVE_DELAY_MS
+		&& motionStatus().state == MotionState::Idle)
 	{
 		saveTurntableState();
 	}

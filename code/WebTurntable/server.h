@@ -8,8 +8,14 @@ constexpr const char* WIFI_PASSWORD   = "";
 // mDNS hostname, so the UI is also at http://turntable.local
 constexpr const char* MDNS_HOSTNAME   = "turntable";
 
-// Initialize the webserver
+// Initialize the webserver, load saved settings and resume a saved spin
 void initWebserver();
+
+// Run commands queued by the WebSocket handler
+void handleCommands();
+
+// Send the state to clients while the disk moves
+void handleStateBroadcast();
 
 // Save turntable settings to flash if needed
 void handleSettingsStorage();
