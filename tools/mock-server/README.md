@@ -15,6 +15,7 @@ node tools/mock-server/server.js --help     # all options
 | `--host` | `127.0.0.1` | Use `0.0.0.0` to open the UI from a phone on the same network. Windows may ask to allow Node through the firewall. |
 | `--data` | `code/WebTurntable/data` | Folder to serve. Files are read on every request, so edits show on reload. |
 | `--protocol` | `v2` | Protocol to emulate (see below). |
+| `--wifi` | `lan` | Start as a LAN client (`lan`) or in Wi-Fi setup (`setup`, where `/` redirects to the setup page). |
 
 While it runs, type a command and press Enter:
 
@@ -27,9 +28,12 @@ The log mirrors the firmware's serial output (connects, commands, and `Settings 
 ## Protocols
 
 - **`v2`** (`protocol-v2.js`) emulates the [v2 protocol](../../docs/FIRMWARE.md#websocket-protocol-v2). It parses and validates commands the way `server.cpp` does, and simulates the motion engine with the same ramp, braking and move-target logic as `motion.cpp`, ticking every 10 ms. It broadcasts state after each command and 10 times a second while the disk moves, and logs `Settings saved` once the disk is idle, as the firmware does.
+- **Wi-Fi setup** is emulated in `protocol-v2.js` as well, with the routes `wireless.cpp` adds: `/setup`, `/api/wifi/status`, `scan`, `join` and `ap`. It also emulates the `wifi` field in the state and the `wifiSetup` command, which "restarts" by dropping the WebSockets.
+  - Timings are shortened: the scan takes 1.5 s, a join 2 s, and the joined grace period 5 s.
+  - The password `wrongpassword` fails, so the error path can be tried.
 - The v1 protocol (`protocol-v1.js`) was removed in Phase 2 along with the v1 UI; it's in the git history.
 
-A protocol module exports `createDevice({ broadcast, log })`, which returns `{ onConnect, onMessage, onDisconnect, describe, close }`.
+A protocol module exports `createDevice({ broadcast, log, wifi, restart })`. It returns `{ onConnect, onMessage, onDisconnect, describe, close }`, plus an optional `handleHttp(req, res)` for device routes. That handler returns the HTTP status, or `null` to fall through to the static files.
 
 ## Files
 

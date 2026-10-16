@@ -3,6 +3,10 @@
 // a second while the disk moves. The motion is simulated with the same ramp logic
 // as code/WebTurntable/motion.cpp, so the UI sees realistic angles and speeds.
 
+// Wi-Fi setup (wireless.cpp) is emulated too: /api/wifi/* for the setup page, the "wifi"
+// field in the state, and the wifiSetup command. Joining with the password
+// "wrongpassword" fails, so the error path can be tried.
+
 // Constants copied from config.h.
 const HALF_STEPS_PER_REV = 4075.772;
 const MIN_RPM = 0.5;
@@ -18,6 +22,17 @@ const SETTINGS_SAVE_DELAY_MS = 750;
 const TICK_MS = 10;
 const STATE_INTERVAL_MS = 100;
 
+// Wi-Fi timings, shortened from wireless.cpp so the flow is quick to try.
+const JOIN_DELAY_MS = 2000;
+const JOINED_GRACE_MS = 5000;
+const SCAN_DELAY_MS = 1500;
+const LAN = { ssid: 'Home Wi-Fi', ip: '192.168.1.42', rssi: -58 };
+const FAKE_NETWORKS = [
+    { ssid: 'Home Wi-Fi', rssi: -52, secure: true },
+    { ssid: 'Cafe Guest', rssi: -70, secure: false },
+    { ssid: 'Neighbour 2.4G', rssi: -81, secure: true },
+];
+
 const rpmToHalfSteps = (rpm) => (rpm * HALF_STEPS_PER_REV) / 60;
 const START_SPEED = rpmToHalfSteps(START_RPM);
 const clamp = (value, low, high) => Math.min(Math.max(value, low), high);
@@ -29,7 +44,7 @@ function approach(value, goal, step) {
 }
 
 // Create a v2 device. broadcast(text) sends to every client; log(line) prints.
-export function createDevice({ broadcast, log }) {
+export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restart = () => {} }) {
     const settings = {
         rpm: DEFAULT_RPM,
         dir: 'cw',
@@ -47,6 +62,13 @@ export function createDevice({ broadcast, log }) {
     let saveTimer = null;
     let settingsDirty = false;
     let lastState = 'idle';
+
+    // Emulated wireless.cpp state.
+    const wifi = initialWifi === 'setup'
+        ? { mode: 'setup', ssid: '', ip: '', rssi: 0, error: '' }
+        : { mode: 'lan', ...LAN, error: '' };
+    let scanReadyAt = 0;
+    let wifiTimer = null;
 
     const motionStateName = () => ({ run: 'running', move: 'moving', stop: 'stopping' })[motion.mode] ?? 'idle';
     const relativePosition = () => Math.round(motion.position) - motion.zero;
@@ -72,8 +94,87 @@ export function createDevice({ broadcast, log }) {
                 maxRpm: round(settings.maxRpm, 1),
                 accel: round(settings.accel, 1),
             },
+            wifi: { mode: wifi.mode, ssid: wifi.ssid, ip: wifi.ip, rssi: wifi.rssi },
             limits: { minRpm: MIN_RPM, maxRpm: MAX_RPM_LIMIT, minAccel: MIN_ACCEL, maxAccel: MAX_ACCEL },
         });
+    }
+
+    function setWifi(fields) {
+        Object.assign(wifi, { ssid: '', ip: '', rssi: 0, error: '' }, fields);
+        log(`Wi-Fi: ${wifi.mode}${wifi.ssid ? ` (${wifi.ssid})` : ''}${wifi.error ? `: ${wifi.error}` : ''}`);
+    }
+
+    const sendJson = (res, code, body) => {
+        res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(body));
+        return code;
+    };
+
+    const readForm = (req) => new Promise((resolve) => {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => resolve(new URLSearchParams(body)));
+    });
+
+    // The routes wireless.cpp adds. Returns the HTTP status, or null to fall through to files.
+    async function handleHttp(req, res) {
+        const { pathname } = new URL(req.url, 'http://mock');
+        const inSetup = ['setup', 'joining', 'joined'].includes(wifi.mode);
+
+        if (pathname === '/' && req.method === 'GET' && inSetup) {
+            res.writeHead(302, { Location: '/setup' });
+            res.end();
+            return 302;
+        }
+        if (pathname === '/setup' && req.method === 'GET') {
+            req.url = '/setup.html';
+            return null;
+        }
+        if (pathname === '/api/wifi/status' && req.method === 'GET') {
+            return sendJson(res, 200, {
+                mode: wifi.mode, ssid: wifi.ssid, ip: wifi.ip, rssi: wifi.rssi, error: wifi.error,
+                hostname: 'turntable.local',
+            });
+        }
+        if (pathname === '/api/wifi/scan' && req.method === 'GET') {
+            const now = Date.now();
+            if (scanReadyAt === 0) {
+                scanReadyAt = now + SCAN_DELAY_MS;
+            }
+            const scanning = now < scanReadyAt;
+            return sendJson(res, 200, { scanning, networks: scanning ? [] : FAKE_NETWORKS });
+        }
+        if (pathname === '/api/wifi/join' && req.method === 'POST') {
+            const form = await readForm(req);
+            const ssid = form.get('ssid') ?? '';
+            const password = form.get('password') ?? '';
+            if (ssid.length === 0 || ssid.length > 32) {
+                return sendJson(res, 400, { error: 'Enter a network name (up to 32 characters).' });
+            }
+            if (password.length > 0 && (password.length < 8 || password.length > 63)) {
+                return sendJson(res, 400, { error: 'Wi-Fi passwords are 8 to 63 characters.' });
+            }
+            if (wifi.mode === 'setup') {
+                setWifi({ mode: 'joining', ssid });
+                clearTimeout(wifiTimer);
+                wifiTimer = setTimeout(() => {
+                    if (password === 'wrongpassword') {
+                        setWifi({ mode: 'setup', error: "Couldn't join: check the password." });
+                        return;
+                    }
+                    setWifi({ mode: 'joined', ssid, ip: LAN.ip, rssi: LAN.rssi });
+                    wifiTimer = setTimeout(() => setWifi({ mode: 'lan', ssid, ip: LAN.ip, rssi: LAN.rssi }), JOINED_GRACE_MS);
+                }, JOIN_DELAY_MS);
+            }
+            return sendJson(res, 202, { ok: true });
+        }
+        if (pathname === '/api/wifi/ap' && req.method === 'POST') {
+            if (wifi.mode === 'setup') {
+                setWifi({ mode: 'ap' });
+            }
+            return sendJson(res, 202, { ok: true });
+        }
+        return null;
     }
 
     function describe() {
@@ -183,6 +284,7 @@ export function createDevice({ broadcast, log }) {
             case 'stop':
             case 'halt':
             case 'setZero':
+            case 'wifiSetup':
                 return { cmd };
             case 'moveBy':
             case 'moveTo': {
@@ -275,6 +377,16 @@ export function createDevice({ broadcast, log }) {
                 motionMoveTo(moveTargetPos, settings.rpm);
                 break;
             }
+            case 'wifiSetup':
+                // Halt, then "restart" into setup: clients drop, as with the real reboot.
+                stopSpinning();
+                motionHalt();
+                motion.zero = 0;
+                motion.position = 0;
+                scanReadyAt = 0;
+                setWifi({ mode: 'setup' });
+                setTimeout(restart, 200);
+                break;
             case 'setZero':
                 motion.zero = Math.round(motion.position);
                 moveTargetDeg = 0;
@@ -346,9 +458,11 @@ export function createDevice({ broadcast, log }) {
             log(`Client disconnected [${client.remoteAddress}]`);
         },
         describe,
+        handleHttp,
         close() {
             clearInterval(timer);
             clearTimeout(saveTimer);
+            clearTimeout(wifiTimer);
         },
     };
 }

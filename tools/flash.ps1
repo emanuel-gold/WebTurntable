@@ -258,7 +258,7 @@ try {
             Invoke-Firmware $target
             Invoke-WebUi $target
             if (-not $WhatIfPreference) {
-                Write-Step 'Done. Join the TURNTABLE Wi-Fi network and open http://turntable.local (or http://192.168.4.5)'
+                Write-Step 'Done. Open http://turntable.local. A turntable without saved Wi-Fi starts setup: join the TURNTABLE network on your phone.'
             }
         }
         'monitor' {

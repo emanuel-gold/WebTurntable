@@ -16,6 +16,7 @@ Options:
       --host <addr>     Bind address (default 127.0.0.1; use 0.0.0.0 to test from a phone on the LAN)
       --data <dir>      Web UI folder (default code/WebTurntable/data)
       --protocol <v>    Protocol to emulate: ${Object.keys(PROTOCOLS).join(', ')} (default v2)
+      --wifi <mode>     Start as a LAN client (lan, default) or in Wi-Fi setup (setup)
   -h, --help            Show this help
 
 While running, type a command and press Enter:
@@ -46,6 +47,7 @@ async function main() {
                 host: { type: 'string', default: '127.0.0.1' },
                 data: { type: 'string', default: DEFAULT_DATA_DIR },
                 protocol: { type: 'string', default: 'v2' },
+                wifi: { type: 'string', default: 'lan' },
                 help: { type: 'boolean', short: 'h', default: false },
             },
         }));
@@ -63,12 +65,14 @@ async function main() {
         host: args.host,
         dataDir: path.resolve(args.data),
         protocol: args.protocol,
+        wifi: args.wifi,
         log,
     });
 
     const hosts = args.host === '0.0.0.0' ? ['localhost', ...lanAddresses()] : [args.host];
     log(`Mock turntable (protocol ${mock.protocol}) serving ${mock.dataDir}`);
     hosts.forEach((h) => log(`  http://${h}:${mock.port}/`));
+    log(`Wi-Fi starts in ${args.wifi} mode; the setup page is at /setup`);
     log('Commands: state, drop, quit');
 
     const shutdown = async () => {

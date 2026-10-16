@@ -34,6 +34,7 @@ export async function startMockServer({
     host = '127.0.0.1',
     dataDir = DEFAULT_DATA_DIR,
     protocol = 'v2',
+    wifi = 'lan',
     log = () => {},
 } = {}) {
     if (!PROTOCOLS[protocol]) {
@@ -42,12 +43,15 @@ export async function startMockServer({
 
     const clients = new Set();
     const broadcast = (text) => clients.forEach((client) => client.send(text));
-    const device = PROTOCOLS[protocol].createDevice({ broadcast, log });
+    // A firmware restart drops every WebSocket, as the real reboot would.
+    const restart = () => clients.forEach((client) => client.drop());
+    const device = PROTOCOLS[protocol].createDevice({ broadcast, log, wifi, restart });
 
-    const server = createServer((req, res) => {
-        serveStatic(req, res, dataDir).then((status) => {
-            log(`[${req.socket.remoteAddress}] HTTP ${req.method} ${req.url} ${status}`);
-        });
+    const server = createServer(async (req, res) => {
+        const url = req.url;
+        // The device answers its own routes (the Wi-Fi setup API); everything else is a file.
+        const status = (device.handleHttp && await device.handleHttp(req, res)) || await serveStatic(req, res, dataDir);
+        log(`[${req.socket.remoteAddress}] HTTP ${req.method} ${url} ${status}`);
     });
 
     server.on('upgrade', (req, socket, head) => {
