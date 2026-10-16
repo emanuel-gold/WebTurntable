@@ -112,6 +112,43 @@ function render() {
     el('max-rpm').max = s.limits.maxRpm;
 
     el('stop').textContent = s.motion === 'stopping' ? 'HALT NOW' : 'STOP';
+
+    renderWifi(s.wifi);
+}
+
+function renderWifi(wifi) {
+    if (!wifi) {
+        return;
+    }
+    var text;
+    if (wifi.mode === 'lan') {
+        text = wifi.ip ? wifi.ssid + ' · ' + wifi.ip + ' · ' + wifi.rssi + ' dBm' : wifi.ssid + ' (reconnecting)';
+    } else if (wifi.mode === 'ap') {
+        text = 'Access point (not saved)';
+    } else {
+        text = wifi.mode;
+    }
+    el('wifi-info').textContent = text;
+}
+
+// Two taps, so a stray tap doesn't drop the connection
+var changeWifiTimer;
+function onChangeWifi() {
+    var button = el('change-wifi');
+    if (button.dataset.armed !== 'true') {
+        button.dataset.armed = 'true';
+        button.textContent = 'Tap again to restart into setup';
+        changeWifiTimer = setTimeout(function () {
+            button.dataset.armed = 'false';
+            button.textContent = 'Change Wi-Fi network';
+        }, 4000);
+        return;
+    }
+    clearTimeout(changeWifiTimer);
+    button.dataset.armed = 'false';
+    button.textContent = 'Restarting into setup…';
+    send({ cmd: 'wifiSetup' });
+    showToast('Restarting. Join the TURNTABLE Wi-Fi network to pick a network.');
 }
 
 function setIfIdle(input, value) {
@@ -223,6 +260,8 @@ function onLoad() {
             send({ cmd: 'settings', maxRpm: value });
         }
     });
+
+    el('change-wifi').addEventListener('click', onChangeWifi);
 
     // STOP ramps down; pressing it again while stopping halts immediately.
     el('stop').addEventListener('click', function () {

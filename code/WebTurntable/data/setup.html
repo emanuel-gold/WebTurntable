@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+        <meta name="theme-color" content="#14161a">
+        <title>Turntable setup</title>
+        <link rel="icon" type="image/png" href="favicon.png">
+        <link rel="stylesheet" type="text/css" href="style.css">
+    </head>
+
+    <body class="setup">
+        <header>
+            <h1>Turntable setup</h1>
+        </header>
+
+        <main>
+            <section id="pick-card" class="card" aria-labelledby="pick-title">
+                <h2 id="pick-title">Connect to your Wi-Fi</h2>
+                <p id="pick-error" class="error" hidden></p>
+                <p class="hint">Pick the network the turntable should join. It only sees 2.4 GHz networks.</p>
+                <div id="networks" class="network-list" aria-live="polite">
+                    <p class="hint">Scanning…</p>
+                </div>
+                <div class="button-row">
+                    <button id="rescan">Scan again</button>
+                    <button id="other">Other network…</button>
+                </div>
+            </section>
+
+            <section id="join-card" class="card" aria-labelledby="join-title" hidden>
+                <h2 id="join-title">Join network</h2>
+                <form id="join-form">
+                    <div id="ssid-row" class="field-row" hidden>
+                        <label for="ssid">Network name</label>
+                        <input id="ssid" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32">
+                    </div>
+                    <div id="password-row" class="field-row">
+                        <label for="password">Password</label>
+                        <input id="password" type="password" autocomplete="current-password" maxlength="63">
+                    </div>
+                    <label class="check"><input id="show-password" type="checkbox"> Show password</label>
+                    <div class="button-row">
+                        <button type="button" id="back">Back</button>
+                        <button type="submit" class="active">Join</button>
+                    </div>
+                </form>
+            </section>
+
+            <section id="progress-card" class="card" aria-live="polite" hidden>
+                <h2 id="progress-title">Connecting…</h2>
+                <p id="progress-text"></p>
+                <a id="open-link" class="button-link" href="http://turntable.local/" hidden>Open the turntable</a>
+            </section>
+
+            <section id="ap-card" class="card">
+                <button id="ap-mode" class="wide">Use Turntable as an access point</button>
+                <p class="hint">Control it over this network instead, without joining your Wi-Fi. Not saved: setup appears again at the next power-up.</p>
+            </section>
+        </main>
+
+        <script src="setup.js"></script>
+    </body>
+</html>

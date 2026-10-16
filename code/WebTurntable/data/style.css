@@ -362,3 +362,83 @@ footer {
 body.offline main {
     opacity: 0.55;
 }
+
+/* Wi-Fi setup page (setup.html) and the Wi-Fi row in settings */
+
+[hidden] {
+    display: none !important;
+}
+
+input[type="text"],
+input[type="password"] {
+    font: inherit;
+    flex: 2;
+    min-width: 0;
+    padding: 9px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 44px;
+}
+
+.network-list {
+    display: grid;
+    gap: 6px;
+    margin: 12px 0 4px;
+}
+
+button.network {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+}
+
+.network-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.network-meta {
+    flex: none;
+    color: var(--muted);
+    letter-spacing: -1px;
+}
+
+.error {
+    color: var(--stop);
+    margin: 0 0 10px;
+}
+
+.check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    margin-top: 10px;
+}
+
+.button-link {
+    display: block;
+    text-align: center;
+    text-decoration: none;
+    font-weight: 600;
+    padding: 14px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--accent-text);
+    margin-top: 12px;
+}
+
+body.setup {
+    padding-bottom: 24px;
+}
+
+.value {
+    color: var(--text);
+    text-align: right;
+    overflow-wrap: anywhere;
+}
