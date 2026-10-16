@@ -1,7 +1,7 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-// Access point credentials
+// Setup access point name and password (open)
 constexpr const char* WIFI_SSID       = "TURNTABLE";
 constexpr const char* WIFI_PASSWORD   = "";
 

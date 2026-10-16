@@ -5,6 +5,7 @@
 #include "config.h"
 #include "motion.h"
 #include "server.h"
+#include "wireless.h"
 
 void setup()
 {
@@ -22,6 +23,7 @@ void setup()
 
 void loop()
 {
+    handleNetwork();
     handleCommands();
     handleStateBroadcast();
     handleSettingsStorage();

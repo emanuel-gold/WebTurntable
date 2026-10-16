@@ -1,6 +1,7 @@
 #include "server.h"
 #include "config.h"
 #include "motion.h"
+#include "wireless.h"
 
 #include <cmath>
 
@@ -8,8 +9,6 @@
 #include <LittleFS.h>
 #include <Preferences.h>
 
-#include <WiFi.h>
-#include <ESPmDNS.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 
@@ -18,11 +17,6 @@ namespace
 	AsyncWebServer server(80);
 	AsyncWebSocket ws("/ws");
 	Preferences preferences;
-
-	// Access point address. The ESP32 default, 192.168.4.1, is the home router's address here.
-	// Phones get DHCP leases from the next address up (192.168.4.6 onward).
-	const IPAddress AP_IP(192, 168, 4, 5);
-	const IPAddress AP_SUBNET(255, 255, 255, 0);
 
 	// Settings live in NVS, so uploading the web UI (which rewrites LittleFS) keeps them
 	constexpr char SETTINGS_NAMESPACE[] = "turntable";
@@ -63,7 +57,8 @@ namespace
 		MoveBy,
 		MoveTo,
 		SetZero,
-		Settings
+		Settings,
+		WifiSetup
 	};
 
 	// Which way a Go to angle move turns
@@ -223,6 +218,13 @@ namespace
 		current["maxRpm"] = roundedJson(settings.maxRpm, 1);
 		current["accel"] = roundedJson(settings.accel, 1);
 
+		const NetworkStatus network = networkStatus();
+		JsonObject wifi = doc["wifi"].to<JsonObject>();
+		wifi["mode"] = networkModeName(network.mode);
+		wifi["ssid"] = network.ssid;
+		wifi["ip"] = network.ip;
+		wifi["rssi"] = network.rssi;
+
 		JsonObject limits = doc["limits"].to<JsonObject>();
 		limits["minRpm"] = MIN_RPM;
 		limits["maxRpm"] = MAX_RPM_LIMIT;
@@ -319,6 +321,11 @@ namespace
 				message = "dir must be shortest, cw or ccw";
 				return false;
 			}
+			return true;
+		}
+		if (cmd == "wifiSetup")
+		{
+			command.type = CommandType::WifiSetup;
 			return true;
 		}
 		if (cmd == "settings")
@@ -446,6 +453,14 @@ namespace
 				moveTargetPos = 0;
 				break;
 
+			case CommandType::WifiSetup:
+				// Stop, save, and restart into the setup access point
+				motionHalt();
+				settings.spinning = false;
+				saveTurntableState();
+				networkRestartIntoSetup();
+				break;
+
 			case CommandType::Settings:
 				if (command.hasDriveMode)
 				{
@@ -558,25 +573,8 @@ void initWebserver()
 		motionRun(settings.rpm, settings.dir);
 	}
 
-	// Setup WiFi access point, with its address set first so DHCP hands out matching leases
-	if (!WiFi.softAPConfig(AP_IP, AP_IP, AP_SUBNET))
-	{
-		Serial.println("Error: Failed to set the access point address");
-	}
-	WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
-	Serial.print("WiFi AP started - IP: ");
-	Serial.println(WiFi.softAPIP());
-
-	// Announce the hostname over mDNS. Not fatal: the IP address still works without it.
-	if (MDNS.begin(MDNS_HOSTNAME))
-	{
-		MDNS.addService("http", "tcp", 80);
-		Serial.printf("mDNS started - http://%s.local\n", MDNS_HOSTNAME);
-	}
-	else
-	{
-		Serial.println("Error: Failed to start mDNS");
-	}
+	// Join the saved Wi-Fi network, or start setup; also adds the setup page routes
+	networkBegin(server);
 
 	// Configure WebSocket
 	ws.onEvent(onWsEvent);
