@@ -13,3 +13,6 @@ __pycache__/
 
 # Playwright MCP output (UI checks against the mock server)
 .playwright-mcp/
+
+# Personal hardware test checklist (see CLAUDE.md)
+todo_checks.md
