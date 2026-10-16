@@ -126,6 +126,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 
 ## Backlog (deferred)
 
+- adjust RPM in real time  while the motor is moving
 - Hall sensor and magnet homing, for an absolute angle that survives power cycles.
 - Capacitive touch controls (start/stop, direction) through the case wall.
 - Lighting control beyond NeoPixels. Examples: a switched or dimmed USB output for a USB light, or a desk lamp on a smart plug (which would need the turntable to join a Wi-Fi network). Needs exploration first.
