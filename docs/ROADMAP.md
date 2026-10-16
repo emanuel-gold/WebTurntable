@@ -173,8 +173,6 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-14 | CCW fixed by making `RotateDirection::CCW` 2, the value the UI already sends. The mock server follows the fixed firmware. |
 | 2026-10-14 | Serial logs at 115200 baud, matching the ESP32 boot messages and `tools\flash.cmd monitor`. |
 | 2026-10-15 | The access point address is 192.168.4.5 (set with `softAPConfig`), because the user's home router is 192.168.4.1. Phones get leases from 192.168.4.6. |
-| 2026-10-16 | The access point is too fiddly as the everyday connection: the phone loses internet, and so does a PC. Phase W moves to home Wi-Fi with captive-portal setup, and the access point becomes the fallback. No compile-time secrets file. |
-| 2026-10-16 | Captive portal revived for Phase W setup (it was scrapped on 2026-10-13). |
 | 2026-10-15 | BOOT-button flashing is accepted for now. Hands-free flashing (another DevKit, access holes) is revisited before the enclosure closes. |
 | 2026-10-15 | Phase 2 angles grow clockwise (positive = CW), like a compass. |
 | 2026-10-15 | Web commands are queued and run in `loop()`, so all settings and motion requests live on one thread. |
@@ -187,6 +185,8 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-14 | The ESP8266 version is frozen at tag `v1-esp8266` and not maintained. |
 | 2026-10-14 | Flash v2 with arduino-cli through `tools\flash.cmd`, not the Arduino IDE, to avoid a second ~6.5 GB core install ([FLASHING.md](FLASHING.md)). |
 | 2026-10-14 | Single branch: v2 work goes on main (renamed from master). The `v2-esp32` branch was merged and deleted. |
+| 2026-10-16 | The access point is too fiddly as the everyday connection: the phone loses internet, and so does a PC. Phase W moves to home Wi-Fi with captive-portal setup, and the access point becomes the fallback. No compile-time secrets file. |
+| 2026-10-16 | Captive portal revived for Phase W setup (it was scrapped on 2026-10-13). |
 
 ## Open questions
 
