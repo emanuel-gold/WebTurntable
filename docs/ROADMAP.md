@@ -14,7 +14,7 @@ _Last updated 2026-10-15._
   - Compile-checked, and tested against the mock (13 tests, plus a browser check at phone width).
   - Nothing has been flashed yet. It needs `tools\flash.cmd all` (firmware and UI), with BOOT held.
   - The user runs the [Phase 2 hardware checks](FLASHING.md#phase-2-hardware-checks): smoothness, a 360° return, the 10-revolution test, max speed, and two phones.
-- **Next:** fix what the hardware test finds, record the measured max speed and steps per revolution, then Phase 3.
+- **Next:** Phase W (Wi-Fi setup), once the user settles the proposed details. Record the Phase 2 measurements (max speed, steps per revolution) when they come in. Then Phase 3.
 - **Deferred:** the BOOT-button question (open question 2), at the user's call. Phase E needs open question 1.
 - **Working style:**
   - Work on main. v1 stays reproducible at tag `v1-esp8266`.
@@ -34,7 +34,7 @@ _Last updated 2026-10-15._
 | MVP | Enclosure v2 for the DevKit | E (parallel) |
 | Post-MVP | Firmware updates over Wi-Fi (OTA) | 5 |
 | Backlog | Hall sensor homing, touch controls, lighting control, IR shutter | — |
-| Scrapped | Captive portal | — |
+| MVP | Home Wi-Fi with captive-portal setup, access point as fallback | W |
 
 ### Angle control without homing
 
@@ -86,6 +86,22 @@ Same features as v1, running on the DevKit.
 
 **Done when:** start and stop look smooth, a 360° Rotate by returns to the same mark, and two phones show the angle updating live.
 
+## Phase W: Wi-Fi setup (next, before Phase 3)
+
+Joining the user's network like a smart home device, instead of always being an access point. Decided 2026-10-16, after the access point proved too fiddly in daily use (see Decisions). Details still to settle are marked *proposed*.
+
+- [ ] **No known network:** the turntable starts an open setup access point. Joining it opens a captive page (DNS answers every name with the turntable, and the OS connectivity probes get redirected). The page lists 2.4 GHz networks from a scan, plus "Other network…", and takes the password.
+  - [ ] On success, the turntable joins as a LAN client and saves the network in NVS. The page shows `turntable.local` and its LAN address with a link to the control UI. The setup access point stays up briefly, then turns off, so the phone falls back to its home Wi-Fi.
+  - [ ] "Use Turntable as an access point" at the bottom of the list goes to the control UI over the access point. Not persisted: the next power-up shows setup again.
+- [ ] **Known network:** connects as a LAN client with no visible access point, and is reachable at `turntable.local`. Wi-Fi drops while running just reconnect quietly.
+- [ ] *Proposed:* if the known network isn't found within about 20 s of power-up, fall back to setup while keeping and retrying the saved network.
+- [ ] **Reset:** puts the turntable back into setup to join a new network. *Proposed:* keep the old network until a new one connects.
+  - The DevKit's BOOT button (GPIO0) can't be held at power-up; that enters flashing mode. Options: a dedicated button on a free pin (GPIO 22 proposed), BOOT held for 5 s while running, and a "Change Wi-Fi network" option in the control UI.
+- [ ] Mock server and docs (README, FLASHING.md "connecting" steps) updated for the new flow.
+- [ ] Not a blocker: **Wi-Fi status LED** showing setup, connecting, connected, and access-point-only. Either blink patterns on the existing status LED (GPIO 23) or a second LED.
+
+**Done when:** a fresh turntable is set up from the iPhone without typing an address, reboots straight onto the home Wi-Fi, and stays reachable at `turntable.local` from the phone and the PC with both still on the internet.
+
 ## Phase 3: Modes, timer, presets
 
 - [ ] Back-and-forth (sweep): range or two end angles, speed, dwell at the ends, cycle count.
@@ -131,12 +147,11 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 - Capacitive touch controls (start/stop, direction) through the case wall.
 - Lighting control beyond NeoPixels. Examples: a switched or dimmed USB output for a USB light, or a desk lamp on a smart plug (which would need the turntable to join a Wi-Fi network). Needs exploration first.
 - IR shutter for dedicated cameras.
-- Home Wi-Fi mode: the turntable joins the user's network (station mode), so the phone keeps internet. Needs a way to enter the Wi-Fi name and password, and a hostname, since the router assigns the address. Deferred 2026-10-15 to keep setup instant while building.
 - USB-C connector in place of the DevKit's micro-USB, for example a USB-C panel socket in the body's old USB-C slot. v2 ships with micro-USB through the riser.
 
 ## Scrapped
 
-- Captive portal.
+- Nothing currently. (The captive portal was scrapped on 2026-10-13 and revived on 2026-10-16 for Phase W.)
 
 ## Decisions
 
@@ -158,6 +173,8 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-14 | CCW fixed by making `RotateDirection::CCW` 2, the value the UI already sends. The mock server follows the fixed firmware. |
 | 2026-10-14 | Serial logs at 115200 baud, matching the ESP32 boot messages and `tools\flash.cmd monitor`. |
 | 2026-10-15 | The access point address is 192.168.4.5 (set with `softAPConfig`), because the user's home router is 192.168.4.1. Phones get leases from 192.168.4.6. |
+| 2026-10-16 | The access point is too fiddly as the everyday connection: the phone loses internet, and so does a PC. Phase W moves to home Wi-Fi with captive-portal setup, and the access point becomes the fallback. No compile-time secrets file. |
+| 2026-10-16 | Captive portal revived for Phase W setup (it was scrapped on 2026-10-13). |
 | 2026-10-15 | BOOT-button flashing is accepted for now. Hands-free flashing (another DevKit, access holes) is revisited before the enclosure closes. |
 | 2026-10-15 | Phase 2 angles grow clockwise (positive = CW), like a compass. |
 | 2026-10-15 | Web commands are queued and run in `loop()`, so all settings and motion requests live on one thread. |
