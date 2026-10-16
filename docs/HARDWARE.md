@@ -8,6 +8,7 @@
 | ULN2003 stepper driver board | Unchanged. |
 | 28BYJ-48 stepper, 5 V | Unchanged. Direct drive: the disk sits on the motor shaft. |
 | 3 mm LED + 220 Ω resistor | Status LED, using the body's existing LED hole. |
+| Momentary push button (normally open) | Reset: held at power-up, it starts Wi-Fi setup. Needs a hole in the enclosure (Phase E). |
 | 470 µF electrolytic capacitor, ≥10 V | Across 5 V and GND at the ULN2003 board. Stops ESP32 brownout resets when the coils switch. |
 | Fasteners | Same as v1, except the 3 bottom-plate M3 bolts are longer by the riser height ([ENCLOSURE.md](ENCLOSURE.md)). Add 4 × M2.5 screws for the DevKit's Ø3 mounting holes. |
 
@@ -24,6 +25,7 @@ Check this against your board's silkscreen. The 38-pin variant has a different h
 | ULN2003 IN3 | 26 |
 | ULN2003 IN4 | 27 |
 | Status LED (through 220 Ω) | 23 |
+| Reset button (to GND, internal pull-up) | 22 |
 | Onboard blue LED | 2 (already on the board; usable as a second indicator) |
 | ULN2003 + / − | VIN / GND (VIN carries USB 5 V) |
 
@@ -65,6 +67,7 @@ USB 5 V ── DevKit VIN ────────── ULN2003 +
 DevKit GND ───────────────────── ULN2003 −
 GPIO 33 / 25 / 26 / 27 ───────── ULN2003 IN1 / IN2 / IN3 / IN4
 GPIO 23 ── 220 Ω ── LED anode;   LED cathode ── GND
+GPIO 22 ── push button ── GND
 28BYJ-48 ─────────────────────── ULN2003 5-pin socket (unchanged)
 470 µF across ULN2003 + and −   (observe polarity)
 ```
@@ -79,11 +82,12 @@ Header positions follow the DOIT 30-pin layout (checked against the board's dime
 |---|---|---|---|
 | Motor signals | D33, D25, D26, D27: pins 7–10 of the EN header, counting from EN | ULN2003 IN1, IN2, IN3, IN4 | 4-pin at both ends |
 | Motor power | GND, VIN: the last two pins of the EN header, at the USB end | ULN2003 − and + | 2-pin at both ends |
-| Status LED | D23: first pin of the other header. GND: second-to-last pin of that header. | LED, with the 220 Ω resistor soldered inline on the anode lead under heat-shrink | 1-pin each |
+| Status LED and reset button | D23 and D22: pins 1 and 2 of the other header. GND: second-to-last pin of that header. | LED anode (with the 220 Ω resistor soldered inline under heat-shrink) on D23, and one button lead on D22. The LED cathode and the other button lead are spliced into one GND lead. | 2-pin on D23/D22, 1-pin on GND |
 
 - **Power polarity.** A 2-pin housing plugged in backwards reverses the ULN2003 supply. Mark the GND side of both housings. Before connecting the ULN2003, check with a multimeter that + reads about 4.7–5 V against −.
 - **Capacitor.** Solder the 470 µF capacitor across the ULN2003 board's power pins on the underside, with the stripe (−) to −. Alternatively, splice it into the power lead at the ULN2003 end.
 - **Power jumper.** If the ULN2003 board has a power on/off jumper next to its power pins, leave it fitted.
+- **Reset button.** The firmware uses the internal pull-up, so the button just shorts GPIO 22 to GND. Hold it for about a second while plugging in power to start Wi-Fi setup. Don't use the DevKit's BOOT button for this: GPIO0 held at power-up enters flashing mode.
 - **Lengths.** The DevKit sits in the riser below the body, and the ULN2003 hangs under the deck ([ENCLOSURE.md](ENCLOSURE.md)). Cut the leads once the riser is test-fitted.
 
 ## Logic levels

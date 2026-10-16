@@ -50,7 +50,8 @@ arduino-cli compile --profile esp32 code/WebTurntable
 | `sequencer.{h,cpp}` | Jobs: spin with a stop condition, sweep, photo capture, video capture |
 | `shutter.{h,cpp}` | BLE HID shutter: advertising, connection state, `press()` |
 | `storage.{h,cpp}` | Last-used state (debounced) and presets |
-| `server.{h,cpp}` | Wi-Fi AP, HTTP, WebSocket protocol, state broadcast |
+| `server.{h,cpp}` | HTTP, WebSocket protocol, state broadcast, settings persistence |
+| `wireless.{h,cpp}` | Wi-Fi: joining the saved network, the setup access point and captive page, mDNS, reset button |
 | `data/` | Web UI |
 
 ## Motion engine
@@ -101,6 +102,40 @@ Requests are queued under a spinlock and picked up on the next control tick (at 
 
 **Command flow.** The AsyncTCP task only parses and validates JSON, replying with an error if a command is bad. Valid commands go on a FreeRTOS queue, and `loop()` runs them, so settings and motion requests are only touched from one thread.
 
+## Wi-Fi and setup (Phase W, `wireless.cpp`)
+
+The turntable joins the user's Wi-Fi as a client, like a smart home device. Its own access point is only for setup, and as a fallback the user can pick.
+
+**States** (`NetworkMode`, shown as `wifi.mode` in the state):
+
+| Mode | Wi-Fi | What happens |
+|---|---|---|
+| `connecting` | STA | At power-up with a saved network. Moves to `lan` once connected, or to `setup` after 20 s. |
+| `lan` | STA | LAN client, with no access point. A drop just reconnects in the background, and no access point appears. |
+| `setup` | AP+STA | Open access point `TURNTABLE` at 192.168.4.5, with captive DNS (every name resolves to the turntable) and the setup page. Scans networks for the page. |
+| `joining` | AP+STA | Trying the network picked on the setup page, for up to 20 s. A bad password fails after about 3 s. |
+| `joined` | AP+STA | Connected and saved. The access point stays up for 30 s so the page can show the address, then closes, and the mode becomes `lan`. |
+| `ap` | AP | "Use Turntable as an access point". Not saved: the next power-up starts over. |
+
+- **Entering setup:** no saved network; the saved network not found within 20 s; the reset button (GPIO 22, low for 1 s at power-up); or the `wifiSetup` command.
+  - `wifiSetup` sets a flag in RTC memory and restarts. That flag survives `esp_restart()` but not a power cycle.
+- **Retrying the saved network:** when setup started only because the saved network wasn't found, the turntable retries it every 60 s, for 15 s at a time. It only does this while no phone is on the setup network, because retries change channel. If the saved network comes back, the access point closes and the mode becomes `lan`.
+- **The saved network is replaced only when a new one connects.** A reset, or an abandoned setup, leaves the old one in place. It's stored in NVS namespace `wifi` (keys `ssid` and `pass`, in plain text). `WiFi.persistent(false)` stops the driver from keeping its own copy.
+- **Captive portal:** in `setup`, `joining` and `joined`, any request for another host goes to `http://192.168.4.5/setup`, and `/` goes there too. In `ap`, other hosts go to the control UI instead. Phones' connectivity checks (Apple's `hotspot-detect.html`, Android's `generate_204`, Windows' `connecttest.txt`) hit that redirect, so the OS opens the sign-in sheet.
+- **mDNS** (`turntable.local`) answers on whichever interface is up.
+
+**Setup page API** (plain HTTP, used by `data/setup.html`):
+
+| Route | Does |
+|---|---|
+| `GET /setup` | The setup page. |
+| `GET /api/wifi/status` | `{"mode","ssid","ip","rssi","error","hostname"}` |
+| `GET /api/wifi/scan` | `{"scanning":bool,"networks":[{"ssid","rssi","secure"}]}`. One entry per name, hidden networks left out. Asks for a fresh scan if the last one is over 15 s old. |
+| `POST /api/wifi/join` | Form fields `ssid` (1–32 characters) and `password` (empty, or 8–63). Replies 202, or 400 with `{"error"}`. |
+| `POST /api/wifi/ap` | Switch to `ap` mode. |
+
+The HTTP handlers run in the AsyncTCP task. They only read a snapshot and post requests under a mutex. `handleNetwork()` in `loop()` owns the state machine.
+
 ## Sequencer jobs
 
 | Job | Parameters | Ends when |
@@ -134,6 +169,7 @@ One endpoint, `/ws`, carrying JSON text frames. Each client-to-device command ha
 {"cmd":"moveTo","deg":180,"dir":"shortest"}     // dir: shortest (default), cw or ccw
 {"cmd":"setZero"}
 {"cmd":"settings","driveMode":"half","maxRpm":15,"accel":20}   // any subset
+{"cmd":"wifiSetup"}                             // halt, save, restart into Wi-Fi setup
 ```
 
 - Speeds are clamped to 0.5 RPM–max speed, max speed to 0.5–30, and acceleration to 1–200.
@@ -143,6 +179,7 @@ One endpoint, `/ws`, carrying JSON text frames. Each client-to-device command ha
 ```json
 {"type":"state","motion":"moving","angle":120.3,"speed":-4.87,"rpm":5.00,"dir":"cw","spinning":false,
  "settings":{"driveMode":"half","maxRpm":15.0,"accel":20.0},
+ "wifi":{"mode":"lan","ssid":"Home","ip":"192.168.1.42","rssi":-58},
  "limits":{"minRpm":0.5,"maxRpm":30,"minAccel":1,"maxAccel":200}}
 {"type":"error","msg":"run needs dir cw or ccw"}
 ```

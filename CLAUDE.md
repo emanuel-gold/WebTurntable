@@ -2,7 +2,7 @@
 
 ## Project
 
-WebTurntable is a small motorized turntable (100 mm disk, 28BYJ-48 stepper, ULN2003 driver) controlled from a phone browser. The microcontroller runs an open Wi-Fi access point (`TURNTABLE`) and serves a web UI at `http://turntable.local` (mDNS) or `http://192.168.4.5`. The UI talks to the firmware over a WebSocket. The enclosure is FDM-printed in PLA; STLs are in `STL/`, and the originals are on MakerWorld (model 572900).
+WebTurntable is a small motorized turntable (100 mm disk, 28BYJ-48 stepper, ULN2003 driver) controlled from a phone browser. The microcontroller joins the user's Wi-Fi and serves a web UI at `http://turntable.local` (mDNS). Setup runs over an open access point (`TURNTABLE`, 192.168.4.5) with a captive page, which also serves as an access-point fallback. The UI talks to the firmware over a WebSocket. The enclosure is FDM-printed in PLA; STLs are in `STL/`, and the originals are on MakerWorld (model 572900).
 
 This repo is a fork:
 
@@ -13,7 +13,7 @@ Push to `origin` only when the user asks. Never push or open PRs against `upstre
 
 Work directly on main (renamed from master); there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
 
-**Current state:** Phase 1 is done and confirmed on hardware. Phase 2 (motion engine, protocol v2, new UI) is code-complete and tested against the mock, and waiting on the user's hardware test.
+**Current state:** Phase 1 is done and confirmed on hardware. Phase 2 (motion engine, protocol v2, new UI) and Phase W (home Wi-Fi with captive-portal setup) are code-complete and tested against the mock, and waiting on the user's hardware test.
 
 **In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
 
@@ -32,10 +32,11 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
   - `WebTurntable.ino`: `setup()` and `loop()`.
   - `config.h`: pins, motor constants, and speed and acceleration limits.
   - `motion.{h,cpp}`: the motion engine. A GPTimer ISR steps the coils through the GPIO registers, and a 1 kHz ramp task on core 1 sets its interval. Position is in half-steps, positive clockwise. See [FIRMWARE.md](docs/FIRMWARE.md#motion-engine).
-  - `server.{h,cpp}`: Wi-Fi AP, mDNS, AsyncWebServer with the WebSocket at `/ws` (protocol v2), and settings persistence (NVS via `Preferences`).
+  - `server.{h,cpp}`: AsyncWebServer with the WebSocket at `/ws` (protocol v2), and settings persistence (NVS via `Preferences`).
     - The AsyncTCP task only parses and validates JSON. Commands are queued and run in `loop()`, so settings are single-threaded.
     - Saves wait for the motor to be idle, because flash writes pause the step interrupt.
-  - `data/`: the web UI served from LittleFS (`index.html`, `script.js`, `style.css`, `favicon.png`). Vanilla JS, no build step.
+  - `wireless.{h,cpp}`: the Wi-Fi state machine. It joins the saved network, or starts the setup access point with captive DNS. It also runs the setup page's `/api/wifi/*`, mDNS, and the reset button on GPIO 22. See [FIRMWARE.md](docs/FIRMWARE.md#wi-fi-and-setup-phase-w-wirelesscpp).
+  - `data/`: the web UI served from LittleFS: the control page (`index.html`, `script.js`), the Wi-Fi setup page (`setup.html`, `setup.js`), and the shared `style.css` and `favicon.png`. Vanilla JS, no build step.
   - `sketch.yaml`: arduino-cli build profile `esp32` that pins the v2 core and library versions.
 - `STL/`: body, bottom plate, and `top plate` (which is the disk).
 - `docs/`: roadmap plus design and reference docs:

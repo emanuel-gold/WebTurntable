@@ -29,7 +29,24 @@ Run every command from the repo folder, in PowerShell or Command Prompt.
 - **Dry run:** add `-WhatIf` to compile and build the web UI image without writing anything to the board.
 - **Web UI uploads replace the whole file system.** Anything the firmware stores there (presets, from Phase 3) is erased. Settings kept in NVS survive.
 
-When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `http://turntable.local`. If the name doesn't resolve (some Android phones), use `http://192.168.4.5`.
+When `all` finishes, a turntable with no saved network starts Wi-Fi setup. See [Connecting to your Wi-Fi](#connecting-to-your-wi-fi).
+
+## Connecting to your Wi-Fi
+
+The turntable joins your home Wi-Fi like a smart plug. Your phone and PC stay on your network, with internet.
+
+**First time, or when the saved network isn't around:**
+
+1. Power the turntable up. With no saved network it starts setup straight away. With a saved network it tries that for about 20 seconds first.
+2. On your phone, go to Settings → Wi-Fi and join **`TURNTABLE`** (no password). A setup page opens by itself. If it doesn't, open `http://192.168.4.5` in the browser.
+3. Pick your home network and enter its password. Only 2.4 GHz networks show up. For a hidden network, use **Other network…**.
+4. When the page says **Connected**, wait about 30 seconds while the setup network closes and your phone goes back to your Wi-Fi. Then tap **Open the turntable**, or open `http://turntable.local`.
+
+**After that:** the turntable joins your Wi-Fi at power-up, with no setup network. Open `http://turntable.local` from any phone or PC on your network, and bookmark it. If the name doesn't work, use the address the setup page showed. A DHCP reservation in your router keeps that address fixed.
+
+**Without Wi-Fi (at a shoot):** on the setup page, tap **Use Turntable as an access point** at the bottom. You then control the turntable over the `TURNTABLE` network. If your iPhone asks, choose **Use Without Internet**, so it keeps cellular data. This isn't saved: the next power-up looks for your Wi-Fi again.
+
+**Switching networks:** in the control page, open Settings and tap **Change Wi-Fi network** twice. Or hold the reset button while you power up. Either way, the old network stays saved until a new one connects.
 
 ### Motor test (no Wi-Fi)
 
@@ -37,8 +54,8 @@ When `all` finishes, join the `TURNTABLE` Wi-Fi network on your phone and open `
 
 ### First flash checklist
 
-1. `tools\flash.cmd all`, then `tools\flash.cmd monitor`. Press the DevKit's **EN** button to restart it and see the whole boot log. It should end with `WiFi AP started - IP: 192.168.4.5` and `mDNS started - http://turntable.local`, and the status LED stays lit.
-2. Join `TURNTABLE`, open `http://turntable.local` (and check `http://192.168.4.5` works too), set a speed, and try CW, CCW and STOP. The dial follows the disk, and the log shows `Settings saved:` once the disk has stopped.
+1. `tools\flash.cmd all`, then `tools\flash.cmd monitor`. Press the DevKit's **EN** button to restart it and see the whole boot log. The first time it should show `No saved Wi-Fi network: starting setup` and `Setup access point TURNTABLE started`. Once set up, it shows `Joined <your network> - http://turntable.local (<address>)`. The status LED stays lit.
+2. Do the [first-time Wi-Fi setup](#connecting-to-your-wi-fi), then open `http://turntable.local` on your phone and on the PC, both on your home Wi-Fi. Set a speed, and try CW, CCW and STOP. The dial follows the disk, and the log shows `Settings saved:` once the disk has stopped.
 3. Unplug USB, plug it back in, and reload the page. The speed and settings come back where you left them. If the disk was spinning when you unplugged, it starts spinning again.
 
 ### Phase 2 hardware checks
@@ -59,11 +76,15 @@ Put a piece of tape on the disk and a mark on the body next to it, so you can se
 | `No USB serial port found` | Check the cable and driver ([setup step 3](#one-time-setup)), or try another USB port on the PC. |
 | Stuck at `Connecting....`, then `Failed to connect to ESP32: Wrong boot mode detected (0x13)` or a timeout | The board didn't enter download mode by itself. Hold the **BOOT** button on the DevKit, run the command again, and release BOOT once `Writing at 0x...` appears. `all` uploads twice, so hold it for each upload. The current DevKit needs this every time; see [HARDWARE.md](HARDWARE.md#download-mode-and-the-boot-button) for the fix. |
 | `Download mode successfully detected, but getting no sync reply: The serial TX path seems to be down` | The board's output reaches the PC, but nothing gets back to it on RX0 (GPIO3). First unplug the USB cable, plug it back in, and retry with BOOT held; that cleared it on 2026-10-15. If it persists, unplug everything from the DevKit except USB, keep it off conductive surfaces, and try again, then try another DevKit. |
-| The page doesn't load, or shows some other device's page | Your phone isn't on the `TURNTABLE` network, or it switched back to your home Wi-Fi because `TURNTABLE` has no internet. Rejoin `TURNTABLE`, and stay on it if the phone asks. |
+| `turntable.local` doesn't load at home | Check that the phone or PC is on the same network as the turntable. Guest networks often keep devices apart. Then try the address from the setup page, or the one in the serial log line `Joined …`. |
+| The setup page doesn't open after joining `TURNTABLE` | Open `http://192.168.4.5` in the browser. |
+| The turntable keeps coming up in setup | It didn't find the saved network within 20 seconds. Check the router is on, and that its 2.4 GHz band is enabled. While nobody is on the setup network, the turntable retries the saved network every minute and switches over once it's found. |
+| The setup page loses contact while joining | That's normal for a moment, because the setup network changes channel to match yours. The page carries on by itself. If it doesn't come back, rejoin your home Wi-Fi and open `http://turntable.local`. |
+| In access point mode the phone drops `TURNTABLE` | The phone left the network because it has no internet. On an iPhone, choose **Use Without Internet** when asked. |
 | `Could not open COM7, the port is busy` | Close whatever has the port open: the serial monitor (this script's or the Arduino IDE's), or another terminal. |
 | The status LED blinks (half a second on, half a second off) and there's no Wi-Fi | The firmware stopped at a startup error. `tools\flash.cmd monitor`, then press **EN**, shows which one. Most often the web UI is missing: run `tools\flash.cmd webui`. |
-| `turntable.local` doesn't load, but `192.168.4.5` does | The phone doesn't support mDNS names (some Android phones), or it's sending lookups over cellular. Use the IP address. |
-| Blank page or 404 at 192.168.4.5 | The web UI isn't on the board. Run `tools\flash.cmd webui`. |
+| `turntable.local` doesn't load, but the IP address does | The phone doesn't support mDNS names (some Android phones), or it's sending lookups over cellular. Use the IP address. |
+| Blank page or 404 | The web UI isn't on the board. Run `tools\flash.cmd webui`. |
 | The board keeps resetting, and the log shows `Brownout detector was triggered` | Power problem. See [HARDWARE.md](HARDWARE.md#power): the 470 µF capacitor, and a 1 A supply. |
 | PowerShell says running scripts is disabled | Use `tools\flash.cmd`, not `flash.ps1`. The `.cmd` wrapper bypasses the policy for that one run without changing any settings. |
 

@@ -14,7 +14,8 @@ _Last updated 2026-10-15._
   - Compile-checked, and tested against the mock (13 tests, plus a browser check at phone width).
   - Nothing has been flashed yet. It needs `tools\flash.cmd all` (firmware and UI), with BOOT held.
   - The user runs the [Phase 2 hardware checks](FLASHING.md#phase-2-hardware-checks): smoothness, a 360° return, the 10-revolution test, max speed, and two phones.
-- **Next:** Phase W (Wi-Fi setup), once the user settles the proposed details. Record the Phase 2 measurements (max speed, steps per revolution) when they come in. Then Phase 3.
+- **Phase W: code done, waiting on the hardware test.** It needs `tools\flash.cmd all` (new firmware and new UI files), and a push button on GPIO 22 for the reset test.
+- **Next:** the user's hardware tests for Phases 2 and W, then fixes, and the Phase 2 measurements (max speed, steps per revolution). Then Phase 3.
 - **Deferred:** the BOOT-button question (open question 2), at the user's call. Phase E needs open question 1.
 - **Working style:**
   - Work on main. v1 stays reproducible at tag `v1-esp8266`.
@@ -88,16 +89,17 @@ Same features as v1, running on the DevKit.
 
 ## Phase W: Wi-Fi setup (next, before Phase 3)
 
-Joining the user's network like a smart home device, instead of always being an access point. Decided 2026-10-16, after the access point proved too fiddly in daily use (see Decisions). Details still to settle are marked *proposed*.
+Joining the user's network like a smart home device, instead of always being an access point. Decided 2026-10-16, after the access point proved too fiddly in daily use (see Decisions). Built in `wireless.cpp`; see [FIRMWARE.md](FIRMWARE.md#wi-fi-and-setup-phase-w-wirelesscpp).
 
-- [ ] **No known network:** the turntable starts an open setup access point. Joining it opens a captive page (DNS answers every name with the turntable, and the OS connectivity probes get redirected). The page lists 2.4 GHz networks from a scan, plus "Other network…", and takes the password.
-  - [ ] On success, the turntable joins as a LAN client and saves the network in NVS. The page shows `turntable.local` and its LAN address with a link to the control UI. The setup access point stays up briefly, then turns off, so the phone falls back to its home Wi-Fi.
-  - [ ] "Use Turntable as an access point" at the bottom of the list goes to the control UI over the access point. Not persisted: the next power-up shows setup again.
-- [ ] **Known network:** connects as a LAN client with no visible access point, and is reachable at `turntable.local`. Wi-Fi drops while running just reconnect quietly.
-- [ ] *Proposed:* if the known network isn't found within about 20 s of power-up, fall back to setup while keeping and retrying the saved network.
-- [ ] **Reset:** puts the turntable back into setup to join a new network. *Proposed:* keep the old network until a new one connects.
-  - The DevKit's BOOT button (GPIO0) can't be held at power-up; that enters flashing mode. Options: a dedicated button on a free pin (GPIO 22 proposed), BOOT held for 5 s while running, and a "Change Wi-Fi network" option in the control UI.
-- [ ] Mock server and docs (README, FLASHING.md "connecting" steps) updated for the new flow.
+- [x] **No known network:** the turntable starts an open setup access point. Joining it opens a captive page (DNS answers every name with the turntable, and the OS connectivity probes get redirected). The page lists 2.4 GHz networks from a scan, plus "Other network…", and takes the password.
+  - [x] On success, the turntable joins as a LAN client and saves the network in NVS. The page shows `turntable.local` and its LAN address with a link to the control UI. The setup access point stays up briefly, then turns off, so the phone falls back to its home Wi-Fi.
+  - [x] "Use Turntable as an access point" at the bottom of the list goes to the control UI over the access point. Not persisted: the next power-up shows setup again.
+- [x] **Known network:** connects as a LAN client with no visible access point, and is reachable at `turntable.local`. Wi-Fi drops while running just reconnect quietly.
+- [x] If the known network isn't found within 20 s of power-up, fall back to setup, keeping the saved network and retrying it every minute while no phone is on the setup network.
+- [x] **Reset:** a dedicated push button on GPIO 22, held at power-up, starts setup. The old network stays saved until a new one connects. (BOOT/GPIO0 can't be used, because holding it at power-up enters flashing mode.) The button needs a hole in the enclosure (Phase E).
+- [x] **Change Wi-Fi network** in the control UI's settings (two taps): restarts into setup.
+- [x] Mock server and docs (README, FLASHING.md "connecting" steps) updated for the new flow.
+- [ ] Hardware test by the user: first setup from the iPhone, a reboot onto home Wi-Fi, `turntable.local` from the phone and PC, the router-off fallback, the reset button, Change Wi-Fi, and access-point mode.
 - [ ] Not a blocker: **Wi-Fi status LED** showing setup, connecting, connected, and access-point-only. Either blink patterns on the existing status LED (GPIO 23) or a second LED.
 
 **Done when:** a fresh turntable is set up from the iPhone without typing an address, reboots straight onto the home Wi-Fi, and stays reachable at `turntable.local` from the phone and the PC with both still on the internet.
@@ -143,6 +145,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 ## Backlog (deferred)
 
 - adjust RPM in real time  while the motor is moving
+  - Note (2026-10-16): spins are meant to follow the speed slider live already (`speed` command); moves keep the speed they started with. The user saw it not work. Needs a repro: which firmware, a spin or a move.
 - Hall sensor and magnet homing, for an absolute angle that survives power cycles.
 - Capacitive touch controls (start/stop, direction) through the case wall.
 - Lighting control beyond NeoPixels. Examples: a switched or dimmed USB output for a USB light, or a desk lamp on a smart plug (which would need the turntable to join a Wi-Fi network). Needs exploration first.
@@ -187,6 +190,10 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-14 | Single branch: v2 work goes on main (renamed from master). The `v2-esp32` branch was merged and deleted. |
 | 2026-10-16 | The access point is too fiddly as the everyday connection: the phone loses internet, and so does a PC. Phase W moves to home Wi-Fi with captive-portal setup, and the access point becomes the fallback. No compile-time secrets file. |
 | 2026-10-16 | Captive portal revived for Phase W setup (it was scrapped on 2026-10-13). |
+| 2026-10-16 | Phase W reset: a dedicated push button on GPIO 22 (to GND, internal pull-up), held at power-up, plus "Change Wi-Fi network" in the control UI. |
+| 2026-10-16 | If the saved network isn't found within 20 s at power-up, the turntable starts setup and keeps retrying the saved network. A Wi-Fi drop while running only reconnects, with no access point. |
+| 2026-10-16 | The saved network is only replaced when a new one connects, so a reset or an abandoned setup can't strand the turntable. |
+| 2026-10-16 | Setup is a small captive portal built on AsyncWebServer and the core's DNSServer, not WiFiManager (which needs the synchronous WebServer). |
 
 ## Open questions
 
