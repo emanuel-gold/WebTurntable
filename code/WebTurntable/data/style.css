@@ -284,6 +284,75 @@ select {
     border-left: none;
 }
 
+/* Spin and Sweep tabs */
+
+.segmented.tabs {
+    margin-bottom: 14px;
+}
+
+.segmented.tabs button {
+    flex: 1;
+    font-weight: 600;
+}
+
+.field-row label.inline {
+    flex: none;
+}
+
+/* Presets */
+
+.preset-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.preset {
+    display: flex;
+    gap: 6px;
+}
+
+.preset-load {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    text-align: left;
+}
+
+.preset-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.preset-summary {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.preset-delete {
+    flex: none;
+    color: var(--stop);
+}
+
+.preset-delete.armed {
+    background: var(--stop);
+    border-color: var(--stop);
+    color: #fff;
+}
+
+#preset-save {
+    margin-top: 12px;
+}
+
+#preset-save input {
+    flex: 1;
+}
+
 .hint {
     color: var(--muted);
     font-size: 0.85rem;

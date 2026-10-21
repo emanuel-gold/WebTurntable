@@ -31,20 +31,77 @@
                 <div class="readout">
                     <div id="angle" class="angle">–</div>
                     <div id="motion" class="motion">–</div>
+                    <div id="job" class="motion" hidden></div>
                 </div>
             </section>
 
-            <section class="card" aria-labelledby="spin-title">
-                <h2 id="spin-title">Spin</h2>
+            <section id="motion-card" class="card" aria-label="Motion">
+                <div class="segmented tabs" role="tablist" aria-label="Mode">
+                    <button id="tab-spin" role="tab" data-tab="spin" aria-controls="panel-spin">Spin</button>
+                    <button id="tab-sweep" role="tab" data-tab="sweep" aria-controls="panel-sweep">Sweep</button>
+                </div>
                 <label class="slider-label" for="rpm">
                     <span>Speed</span>
                     <span><strong id="rpm-value">–</strong> RPM · <span id="spr-value">–</span> s/rev</span>
                 </label>
                 <input id="rpm" type="range" min="0.5" max="15" step="0.1" value="5">
-                <div class="button-row">
-                    <button id="run-ccw" class="big" data-dir="ccw">⟲ CCW</button>
-                    <button id="run-cw" class="big" data-dir="cw">CW ⟳</button>
+
+                <div id="panel-spin" role="tabpanel" aria-labelledby="tab-spin">
+                    <div class="field-row">
+                        <label for="spin-stop-after">Run</label>
+                        <input id="spin-stop-value" type="number" inputmode="decimal" step="any" aria-label="Revolutions or minutes">
+                        <select id="spin-stop-after">
+                            <option value="never">until STOP</option>
+                            <option value="revs">revolutions</option>
+                            <option value="minutes">minutes</option>
+                        </select>
+                    </div>
+                    <div class="button-row">
+                        <button id="run-ccw" class="big" data-dir="ccw">⟲ CCW</button>
+                        <button id="run-cw" class="big" data-dir="cw">CW ⟳</button>
+                    </div>
+                    <p class="hint">A set number of revolutions lands back on the starting angle.</p>
                 </div>
+
+                <div id="panel-sweep" role="tabpanel" aria-labelledby="tab-sweep" hidden>
+                    <!-- No inputmode on the angles: the iPhone's decimal keypad has no minus sign -->
+                    <div class="field-row">
+                        <label for="sweep-from">From</label>
+                        <input id="sweep-from" type="number" step="any">
+                        <span class="unit">°</span>
+                        <label for="sweep-to" class="inline">to</label>
+                        <input id="sweep-to" type="number" step="any">
+                        <span class="unit">°</span>
+                    </div>
+                    <p id="sweep-summary" class="hint">–</p>
+                    <div class="field-row">
+                        <label for="sweep-dwell">Pause at each end</label>
+                        <input id="sweep-dwell" type="number" inputmode="decimal" step="any" min="0" max="60">
+                        <span class="unit">s</span>
+                    </div>
+                    <div class="field-row">
+                        <label for="sweep-stop-after">Run</label>
+                        <input id="sweep-stop-value" type="number" inputmode="decimal" step="any" aria-label="Cycles or minutes">
+                        <select id="sweep-stop-after">
+                            <option value="never">until STOP</option>
+                            <option value="cycles">cycles</option>
+                            <option value="minutes">minutes</option>
+                        </select>
+                    </div>
+                    <button id="sweep-start" class="big wide">Start sweep</button>
+                    <p class="hint">Angles count from zero, so −30 to 30 swings around it. A cycle goes there and back; a timed sweep stops at the next end.</p>
+                </div>
+            </section>
+
+            <section class="card" aria-labelledby="presets-title">
+                <h2 id="presets-title">Presets</h2>
+                <ul id="preset-list" class="preset-list"></ul>
+                <p id="presets-empty" class="hint">No presets yet. Set up a spin or sweep, then save it here.</p>
+                <form id="preset-save" class="field-row">
+                    <input id="preset-name" type="text" maxlength="24" placeholder="Name" aria-label="Preset name" autocomplete="off" enterkeyhint="done">
+                    <button id="preset-save-button" type="submit">Save spin</button>
+                </form>
+                <p class="hint">Saves the speed and the open tab's options. Saving under a name that's taken replaces that preset. Tap a preset to load it, then start it.</p>
             </section>
 
             <section class="card" aria-labelledby="position-title">
@@ -59,7 +116,7 @@
                 </div>
                 <form id="move-by" class="field-row">
                     <label for="move-by-deg">Rotate by</label>
-                    <input id="move-by-deg" type="number" inputmode="decimal" step="any" value="360" required>
+                    <input id="move-by-deg" type="number" step="any" value="360" required>
                     <span class="unit">°</span>
                     <button type="submit">Go</button>
                 </form>
