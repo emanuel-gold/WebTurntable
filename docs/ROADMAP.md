@@ -16,7 +16,7 @@ _Last updated 2026-10-21._
   - **Problem found and fixed in code (resume-on-power-up):** in access-point mode the user started a CW spin and cut the power. At power-up it spun again straight away, and nothing could stop it until it rejoined the home Wi-Fi. The user decided a power loss must never restart a spin, so the disk now always starts stopped. Needs a firmware flash and a recheck.
   - **Still to test:** the reset button (D22 to GND at power-up) and max speed. See `todo_checks.md`.
 - **Next:**
-  - Flash the no-resume fix and recheck it.
+  - Flash the no-resume fix and the CW/CCW toggle (`toolslash.cmd all`), and recheck both.
   - Fix the steps-per-revolution constant (or add a calibration), then rerun the 10-revolution test.
   - Finish the remaining tests.
   - Then Phase 3.
@@ -199,6 +199,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-16 | The saved network is only replaced when a new one connects, so a reset or an abandoned setup can't strand the turntable. |
 | 2026-10-16 | Setup is a small captive portal built on AsyncWebServer and the core's DNSServer, not WiFiManager (which needs the synchronous WebServer). |
 | 2026-10-21 | A power loss never restarts a spin: the disk always starts stopped (v1 resumed it). Found in testing, where a resumed spin couldn't be stopped until Wi-Fi reconnected. Speed and the other settings are still restored. |
+| 2026-10-21 | The CW and CCW buttons toggle: pressing the direction that's already spinning stops it (with a ramp), and pressing the other one reverses. They look the same as before. |
 
 ## Open questions
 

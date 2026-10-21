@@ -211,7 +211,13 @@ function onLoad() {
 
     document.querySelectorAll('[data-dir]').forEach(function (button) {
         button.addEventListener('click', function () {
-            send({ cmd: 'run', dir: button.dataset.dir, rpm: parseFloat(slider.value) });
+            // Press to toggle: the direction that's already spinning stops (with a ramp)
+            var dir = button.dataset.dir;
+            if (state && state.spinning && state.dir === dir && state.motion !== 'stopping') {
+                send({ cmd: 'stop' });
+            } else {
+                send({ cmd: 'run', dir: dir, rpm: parseFloat(slider.value) });
+            }
         });
     });
 
