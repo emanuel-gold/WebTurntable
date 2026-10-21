@@ -6,16 +6,18 @@ Mark items `[x]` as they land.
 
 ## Status
 
-_Last updated 2026-10-15._
+_Last updated 2026-10-21._
 
 - **Done:** planning, Phase 0, and Phase 1 (confirmed on hardware 2026-10-15: motor control from the UI, both addresses, settings across a power cycle).
-- **Phase 2: code done, waiting on the hardware test.**
-  - Built: the motion engine (GPTimer ISR plus a 1 kHz ramp task), protocol v2, the new UI, and the v2 mock server.
-  - Compile-checked, and tested against the mock (13 tests, plus a browser check at phone width).
-  - Nothing has been flashed yet. It needs `tools\flash.cmd all` (firmware and UI), with BOOT held.
-  - The user runs the [Phase 2 hardware checks](FLASHING.md#phase-2-hardware-checks): smoothness, a 360° return, the 10-revolution test, max speed, and two phones.
-- **Phase W: code done, waiting on the hardware test.** It needs `tools\flash.cmd all` (new firmware and new UI files), and a push button on GPIO 22 for the reset test.
-- **Next:** the user's hardware tests for Phases 2 and W, then fixes, and the Phase 2 measurements (max speed, steps per revolution). Then Phase 3.
+- **Phases 2 and W are flashed and mostly confirmed on hardware (2026-10-21).**
+  - **Phase 2 passed:** smooth start, stop and reversal; two devices showing live updates; quick nudges merging.
+  - **Phase 2 problem:** positioning stops short. A 360° Rotate by ended about 2.3 mm short at the tape mark, and 3600° about 18.5 mm short. Both runs are short by a similar amount per revolution, and they ran at different speeds, so this looks like the steps-per-revolution constant rather than skipped steps. Assuming the tape sits at the disk's 50 mm radius, that's about 2.1° per revolution, so roughly 4100 half-steps per revolution instead of 4075.77. That's close to the 64:1 (2048 full steps) variant of the 28BYJ-48.
+  - **Phase W passed:** setup from the iPhone, joining, reconnect after a power cycle, `turntable.local` on the phone and PC, the wrong-password path, the router-off fallback, and Change Wi-Fi network.
+  - **Still to test:** the reset button (D22 to GND at power-up), access-point mode, and max speed. See `todo_checks.md`.
+- **Next:**
+  - Fix the steps-per-revolution constant (or add a calibration), then rerun the 10-revolution test.
+  - Finish the remaining tests.
+  - Then Phase 3.
 - **Deferred:** the BOOT-button question (open question 2), at the user's call. Phase E needs open question 1.
 - **Working style:**
   - Work on main. v1 stays reproducible at tag `v1-esp8266`.
@@ -76,7 +78,7 @@ Same features as v1, running on the DevKit.
 - [x] Trapezoidal acceleration and deceleration on start, stop, and speed or direction changes.
 - [x] Drive modes: half-step (smooth, default) and two-phase full-step (more torque). Two-phase full-step replaces v1's one-coil "full" pattern.
 - [x] Coils off when idle, as in v1.
-- [ ] Verify steps per revolution with a 10-revolution test against the index mark (expected 2037.886 full steps). Hardware test: Rotate by 3600°.
+- [ ] Verify steps per revolution with a 10-revolution test against the index mark (expected 2037.886 full steps). Hardware test: Rotate by 3600°. Done once on 2026-10-21: it stopped about 18.5 mm short (about 2.1° per revolution at a 50 mm radius), so the constant needs correcting, likely toward 2048 full steps (64:1). Rerun after the fix.
 - [x] Speed set in RPM, with seconds per revolution shown alongside, and a slider linear in RPM.
 - [ ] Find the real max reliable speed on hardware (v1 tops out around 16 RPM). The max speed setting goes up to 30 for this test.
 - [x] Angle control: live angle dial, Set zero, Rotate by (quick ± buttons and a custom value), Go to angle (shortest path or a chosen direction).
@@ -145,7 +147,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 ## Backlog (deferred)
 
 - adjust RPM in real time  while the motor is moving
-  - Note (2026-10-16): spins are meant to follow the speed slider live already (`speed` command); moves keep the speed they started with. The user saw it not work. Needs a repro: which firmware, a spin or a move.
+  - Confirmed 2026-10-21: spins (CW/CCW buttons) follow the slider live, but moves (±15/45/90, Rotate by, Go to) keep the speed they started with. The fix is small: on a `speed` command during a move, re-request the same target at the new speed.
 - Hall sensor and magnet homing, for an absolute angle that survives power cycles.
 - Capacitive touch controls (start/stop, direction) through the case wall.
 - Lighting control beyond NeoPixels. Examples: a switched or dimmed USB output for a USB light, or a desk lamp on a smart plug (which would need the turntable to join a Wi-Fi network). Needs exploration first.
