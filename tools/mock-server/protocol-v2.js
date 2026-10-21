@@ -183,7 +183,8 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
             `maxRpm=${maxRpm}, accel=${accel}; ${motionStateName()} at ${angle().toFixed(1)} deg`;
     }
 
-    // The firmware waits for idle before saving, because flash writes pause stepping.
+    // The firmware waits while the disk moves to a target, because flash writes pause stepping.
+    // Spins are saved as they run.
     function queueSettingsSave() {
         settingsDirty = true;
         clearTimeout(saveTimer);
@@ -194,7 +195,7 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
         if (!settingsDirty) {
             return;
         }
-        if (motion.mode !== 'idle') {
+        if (motion.mode === 'move' || motion.mode === 'stop') {
             saveTimer = setTimeout(trySave, STATE_INTERVAL_MS);
             return;
         }

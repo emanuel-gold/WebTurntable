@@ -3,9 +3,9 @@
     Also a wiring test: the motor turns clockwise and the status LED lights.
 */
 
-// ESP32 DevKit V1 pins, the same as code/WebTurntable/turntable.h
+// ESP32 DevKit V1 pins, the same as code/WebTurntable/config.h
 static constexpr uint8_t MOTOR_PINS[] = {33, 25, 26, 27};
-static constexpr uint8_t LED_PIN = 23;
+static constexpr uint8_t LED_PIN = 2;
 
 static constexpr uint8_t HALF_STEPPING_PATTERN[8][4] = 
 {

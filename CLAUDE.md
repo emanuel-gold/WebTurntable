@@ -34,8 +34,8 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
   - `motion.{h,cpp}`: the motion engine. A GPTimer ISR steps the coils through the GPIO registers, and a 1 kHz ramp task on core 1 sets its interval. Position is in half-steps, positive clockwise. See [FIRMWARE.md](docs/FIRMWARE.md#motion-engine).
   - `server.{h,cpp}`: AsyncWebServer with the WebSocket at `/ws` (protocol v2), and settings persistence (NVS via `Preferences`).
     - The AsyncTCP task only parses and validates JSON. Commands are queued and run in `loop()`, so settings are single-threaded.
-    - Saves wait for the motor to be idle, because flash writes pause the step interrupt.
-  - `wireless.{h,cpp}`: the Wi-Fi state machine. It joins the saved network, or starts the setup access point with captive DNS. It also runs the setup page's `/api/wifi/*`, mDNS, and the reset button on GPIO 22. See [FIRMWARE.md](docs/FIRMWARE.md#wi-fi-and-setup-phase-w-wirelesscpp).
+    - Flash writes pause the step interrupt, so saves wait while a move runs. Spins are saved as they run.
+  - `wireless.{h,cpp}`: the Wi-Fi state machine. It joins the saved network, or starts the setup access point with captive DNS. It also runs the setup page's `/api/wifi/*`, mDNS, and the reset button on GPIO 4. See [FIRMWARE.md](docs/FIRMWARE.md#wi-fi-and-setup-phase-w-wirelesscpp).
   - `data/`: the web UI served from LittleFS: the control page (`index.html`, `script.js`), the Wi-Fi setup page (`setup.html`, `setup.js`), and the shared `style.css` and `favicon.png`. Vanilla JS, no build step.
   - `sketch.yaml`: arduino-cli build profile `esp32` that pins the v2 core and library versions.
 - `STL/`: body, bottom plate, and `top plate` (which is the disk).

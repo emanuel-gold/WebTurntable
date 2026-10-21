@@ -14,7 +14,7 @@ _Last updated 2026-10-21._
   - **Phase 2 problem:** positioning stops short. A 360° Rotate by ended about 2.3 mm short at the tape mark, and 3600° about 18.5 mm short. Both runs are short by a similar amount per revolution, and they ran at different speeds, so this looks like the steps-per-revolution constant rather than skipped steps. Assuming the tape sits at the disk's 50 mm radius, that's about 2.1° per revolution, so roughly 4100 half-steps per revolution instead of 4075.77. That's close to the 64:1 (2048 full steps) variant of the 28BYJ-48.
   - **Phase W passed:** setup from the iPhone, joining, reconnect after a power cycle, `turntable.local` on the phone and PC, the wrong-password path, the router-off fallback, Change Wi-Fi network, and access-point mode (controls load in the captive sheet, and a power cycle goes back to the home Wi-Fi).
   - **Problem found and fixed in code (resume-on-power-up):** in access-point mode the user started a CW spin and cut the power. At power-up it spun again straight away, and nothing could stop it until it rejoined the home Wi-Fi. The user decided a power loss must never restart a spin, so the disk now always starts stopped. Needs a firmware flash and a recheck.
-  - **Still to test:** the reset button (D22 to GND at power-up) and max speed. See `todo_checks.md`.
+  - **Still to test:** the reset button (D4 to GND at power-up) and max speed. See `todo_checks.md`.
 - **Next:**
   - Flash the no-resume fix and the CW/CCW toggle (`toolslash.cmd all`), and recheck both.
   - Fix the steps-per-revolution constant (or add a calibration), then rerun the 10-revolution test.
@@ -100,11 +100,11 @@ Joining the user's network like a smart home device, instead of always being an 
   - [x] "Use Turntable as an access point" at the bottom of the list goes to the control UI over the access point. Not persisted: the next power-up shows setup again.
 - [x] **Known network:** connects as a LAN client with no visible access point, and is reachable at `turntable.local`. Wi-Fi drops while running just reconnect quietly.
 - [x] If the known network isn't found within 20 s of power-up, fall back to setup, keeping the saved network and retrying it every minute while no phone is on the setup network.
-- [x] **Reset:** a dedicated push button on GPIO 22, held at power-up, starts setup. The old network stays saved until a new one connects. (BOOT/GPIO0 can't be used, because holding it at power-up enters flashing mode.) The button needs a hole in the enclosure (Phase E).
+- [x] **Reset:** a dedicated push button on GPIO 4 (moved from 22 on 2026-10-21), held at power-up, starts setup. The old network stays saved until a new one connects. (BOOT/GPIO0 can't be used, because holding it at power-up enters flashing mode.) The button needs a hole in the enclosure (Phase E).
 - [x] **Change Wi-Fi network** in the control UI's settings (two taps): restarts into setup.
 - [x] Mock server and docs (README, FLASHING.md "connecting" steps) updated for the new flow.
 - [ ] Hardware test by the user: first setup from the iPhone, a reboot onto home Wi-Fi, `turntable.local` from the phone and PC, the router-off fallback, the reset button, Change Wi-Fi, and access-point mode.
-- [ ] Not a blocker: **Wi-Fi status LED** showing setup, connecting, connected, and access-point-only. Either blink patterns on the existing status LED (GPIO 23) or a second LED.
+- [ ] Not a blocker: **Wi-Fi status LED** showing setup, connecting, connected, and access-point-only. Either blink patterns on the existing status LED (GPIO 2) or a second LED.
 
 **Done when:** a fresh turntable is set up from the iPhone without typing an address, reboots straight onto the home Wi-Fi, and stays reachable at `turntable.local` from the phone and the PC with both still on the internet.
 
@@ -200,6 +200,8 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-16 | Setup is a small captive portal built on AsyncWebServer and the core's DNSServer, not WiFiManager (which needs the synchronous WebServer). |
 | 2026-10-21 | A power loss never restarts a spin: the disk always starts stopped (v1 resumed it). Found in testing, where a resumed spin couldn't be stopped until Wi-Fi reconnected. Speed and the other settings are still restored. |
 | 2026-10-21 | The CW and CCW buttons toggle: pressing the direction that's already spinning stops it (with a ramp), and pressing the other one reverses. They look the same as before. |
+| 2026-10-21 | Status LED moved from GPIO 23 to GPIO 2, and the reset button from GPIO 22 to GPIO 4. With D4, D2, D15 and GND adjacent, one 4-pin housing carries both (D15 empty). D5, the user's suggestion, was ruled out: it's a strapping pin that outputs during boot, and the button is held at power-up. GPIO 2 is a strapping pin too, but it's safe as an LED output, which only pulls it gently low. |
+| 2026-10-21 | Settings save during spins, not only when idle, so a speed change mid-spin survives a power cut (found in testing). Moves still wait for idle, because flash writes pause stepping. |
 
 ## Open questions
 

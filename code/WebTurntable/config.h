@@ -5,8 +5,8 @@
 
 // Pin definitions for the ESP32 DevKit V1 (see docs/HARDWARE.md)
 const uint8_t MOTOR_PINS[] = {33, 25, 26, 27};  // ULN2003 IN1-IN4
-const uint8_t LED_PIN = 23;                     // Status LED through 220 ohm, active high
-const uint8_t RESET_BUTTON_PIN = 22;            // Push button to GND; held at power-up, starts Wi-Fi setup
+const uint8_t LED_PIN = 2;                      // Status LED through 220 ohm, active high (the onboard blue LED too)
+const uint8_t RESET_BUTTON_PIN = 4;             // Push button to GND; held at power-up, starts Wi-Fi setup
 
 // 28BYJ-48 gear ratio ~63.684:1, so one revolution of the disk is 2037.886 full steps
 constexpr float HALF_STEPS_PER_REV = 4075.772f;

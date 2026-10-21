@@ -117,7 +117,7 @@ The turntable joins the user's Wi-Fi as a client, like a smart home device. Its 
 | `joined` | AP+STA | Connected and saved. The access point stays up for 30 s so the page can show the address, then closes, and the mode becomes `lan`. |
 | `ap` | AP | "Use Turntable as an access point". Not saved: the next power-up starts over. |
 
-- **Entering setup:** no saved network; the saved network not found within 20 s; the reset button (GPIO 22, low for 1 s at power-up); or the `wifiSetup` command.
+- **Entering setup:** no saved network; the saved network not found within 20 s; the reset button (GPIO 4, low for 1 s at power-up); or the `wifiSetup` command.
   - `wifiSetup` sets a flag in RTC memory and restarts. That flag survives `esp_restart()` but not a power cycle.
 - **Retrying the saved network:** when setup started only because the saved network wasn't found, the turntable retries it every 60 s, for 15 s at a time. It only does this while no phone is on the setup network, because retries change channel. If the saved network comes back, the access point closes and the mode becomes `lan`.
 - **The saved network is replaced only when a new one connects.** A reset, or an abandoned setup, leaves the old one in place. It's stored in NVS namespace `wifi` (keys `ssid` and `pass`, in plain text). `WiFi.persistent(false)` stops the driver from keeping its own copy.
@@ -212,7 +212,7 @@ Directions are strings rather than enum numbers, which removes the v1 CW/OFF/CCW
 - **Last-used state:** stored in NVS (`Preferences`), written after 750 ms of idle as in v1. NVS is wear-levelled and suits small key-value data.
   - Namespace `turntable`, key `settings`, holding the `TurntableSettings` struct as a blob. Phase 2 stores rpm, dir, spinning, drive mode, max speed and acceleration (`MAGIC` "TTB2").
   - A load is rejected if the size or magic number doesn't match. Bump `MAGIC` when the struct layout changes, so old data is ignored rather than misread. Loaded values are clamped to the limits.
-  - Saves wait until the motor is idle, because flash writes pause the step timer.
+  - Flash writes pause the step timer for a moment, so saves wait while the disk moves to a target, where every step counts. A spin is saved as it runs (decided 2026-10-21): a brief hitch there only nudges the dial, and it means a speed change mid-spin survives a power cut.
   - `spinning` is runtime-only: it's cleared at load, so the disk always starts stopped after a power cut (decided 2026-10-21; v1 resumed the spin).
   - NVS sits outside the LittleFS partition, so firmware and web UI uploads both keep it.
 - **Presets:** stored in `/presets.json` on LittleFS, about 10 entries.

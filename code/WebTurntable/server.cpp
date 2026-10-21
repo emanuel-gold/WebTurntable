@@ -598,12 +598,14 @@ void handleStateBroadcast()
 	}
 }
 
-// Save settings after an idle delay to minimize flash wear. Waits while the disk moves,
-// because flash writes pause the step timer.
+// Save settings after an idle delay to minimize flash wear. Flash writes pause the step
+// timer for a moment, so saves wait while the disk moves to a target, where every step
+// counts. A spin is saved as it runs: a brief hitch there only nudges the dial.
 void handleSettingsStorage()
 {
+	const MotionState state = motionStatus().state;
 	if (settingsDirty && millis() - lastSettingsChangeMs >= SETTINGS_SAVE_DELAY_MS
-		&& motionStatus().state == MotionState::Idle)
+		&& (state == MotionState::Idle || state == MotionState::Running))
 	{
 		saveTurntableState();
 	}
