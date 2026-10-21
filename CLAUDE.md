@@ -70,7 +70,7 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
 - If flashing steps change, update [docs/FLASHING.md](docs/FLASHING.md). The user wants it easy to follow.
 - The user does hardware testing (motor behavior, phone pairing). Don't claim a change works on the device until the user confirms it.
 - Write testing steps for the user in `todo_checks.md` at the repo root. It's gitignored, so create it if it's missing.
-  - Start each item with an HTML comment tag, `- <!-- TODO --> ...`, so the user's VS Code Todo Tree extension picks it up. Don't use `- [ ]` checkboxes, because Todo Tree catches those too and would list each item twice.
+  - Start to-do items with `- [ ]` checkboxes.
   - Remove items the user reports as done.
 
 ## Environment
