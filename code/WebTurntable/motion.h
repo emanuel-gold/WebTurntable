@@ -50,8 +50,8 @@ void motionStop();
 // Stop immediately and switch the coils off
 void motionHalt();
 
-// Make the current position the zero angle
-void motionSetZero();
+// Make the current position the zero angle. Returns how far zero moved, in half-steps.
+int32_t motionSetZero();
 
 // Change the drive mode; takes effect on the next step
 void motionSetDriveMode(DriveMode mode);

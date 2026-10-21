@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "motion.h"
+#include "sequencer.h"
 #include "server.h"
 #include "wireless.h"
 
@@ -25,6 +26,8 @@ void loop()
 {
     handleNetwork();
     handleCommands();
+    // After commands, so a sweep with no dwell starts its next leg before storage sees it idle
+    handleSequencer();
     handleStateBroadcast();
     handleSettingsStorage();
     handleWebSocketClients();

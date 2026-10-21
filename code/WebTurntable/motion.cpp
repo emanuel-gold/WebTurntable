@@ -373,10 +373,14 @@ void motionHalt()
     s_release = true;
 }
 
-// Make the current position the zero angle
-void motionSetZero()
+// Make the current position the zero angle. Returns how far zero moved, in half-steps.
+int32_t motionSetZero()
 {
-    s_zero = s_position;
+    // Read the position once, since the step ISR may move it
+    const int32_t position = s_position;
+    const int32_t shift = position - s_zero;
+    s_zero = position;
+    return shift;
 }
 
 // Change the drive mode; takes effect on the next step

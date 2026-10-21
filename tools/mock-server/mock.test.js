@@ -18,22 +18,26 @@ before(async () => {
 after(() => mock.close());
 
 // Open a WebSocket and queue its messages, so none are missed between awaits.
+// Presets messages get their own queue, so tests that read states and errors don't trip on them.
 async function connect(server = mock) {
     const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
-    const queue = [];
-    const waiters = [];
+    const queues = { main: [], presets: [] };
+    const waiters = { main: [], presets: [] };
     ws.addEventListener('message', (event) => {
         const msg = JSON.parse(event.data);
-        const waiter = waiters.shift();
-        waiter ? waiter(msg) : queue.push(msg);
+        const kind = msg.type === 'presets' ? 'presets' : 'main';
+        const waiter = waiters[kind].shift();
+        waiter ? waiter(msg) : queues[kind].push(msg);
     });
     await new Promise((resolve, reject) => {
         ws.addEventListener('open', resolve, { once: true });
         ws.addEventListener('error', reject, { once: true });
     });
-    const next = () => queue.length > 0
-        ? Promise.resolve(queue.shift())
-        : new Promise((resolve) => waiters.push(resolve));
+    const take = (kind) => queues[kind].length > 0
+        ? Promise.resolve(queues[kind].shift())
+        : new Promise((resolve) => waiters[kind].push(resolve));
+    const next = () => take('main');
+    const nextPresets = () => take('presets');
     const send = (obj) => ws.send(JSON.stringify(obj));
 
     // Read messages until one matches, failing after timeoutMs.
@@ -51,7 +55,7 @@ async function connect(server = mock) {
             }
         }
     }
-    return { ws, next, send, waitFor };
+    return { ws, next, nextPresets, send, waitFor };
 }
 
 // Run a protocol test against its own mock, so device state doesn't leak between tests.
@@ -94,7 +98,7 @@ test('does not serve files outside the data folder', async () => {
     assert.equal(await rawGet('/..%2f..%2f..%2fCLAUDE.md'), 403);
 });
 
-test('sends the full state on connect', () => withDevice(async ({ next }) => {
+test('sends the full state and the presets on connect', () => withDevice(async ({ next, nextPresets }) => {
     const msg = await next();
     assert.equal(msg.type, 'state');
     assert.equal(msg.motion, 'idle');
@@ -102,8 +106,16 @@ test('sends the full state on connect', () => withDevice(async ({ next }) => {
     assert.equal(msg.rpm, 5);
     assert.equal(msg.dir, 'cw');
     assert.equal(msg.spinning, false);
+    assert.equal(msg.job, null);
+    assert.deepEqual(msg.spin, { stopAfter: 'never', stopValue: 1 });
+    assert.deepEqual(msg.sweep, { fromDeg: -30, toDeg: 30, dwellMs: 500, stopAfter: 'never', stopValue: 4 });
     assert.deepEqual(msg.settings, { driveMode: 'half', maxRpm: 20, accel: 20 });
-    assert.deepEqual(msg.limits, { minRpm: 0.5, maxRpm: 20, minAccel: 1, maxAccel: 200 });
+    assert.deepEqual(msg.limits, {
+        minRpm: 0.5, maxRpm: 20, minAccel: 1, maxAccel: 200,
+        minRevs: 0.1, maxRevs: 1000, minMinutes: 0.1, maxMinutes: 600,
+        maxCycles: 1000, maxSweepDeg: 3600, maxDwellMs: 60000,
+    });
+    assert.deepEqual(await nextPresets(), { type: 'presets', presets: [] });
 }));
 
 test('broadcasts each change to every client', () => withDevice(async (a, server) => {
@@ -131,6 +143,22 @@ test('rejects bad commands with an error to the sender only', () => withDevice(a
     assert.deepEqual(await next(), { type: 'error', msg: 'speed needs a number rpm' });
     send({ cmd: 'moveTo', deg: 10, dir: 'sideways' });
     assert.deepEqual(await next(), { type: 'error', msg: 'dir must be shortest, cw or ccw' });
+    send({ cmd: 'spinOptions', stopAfter: 'cycles' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'stopAfter must be never, revs or minutes' });
+    send({ cmd: 'sweepOptions', stopAfter: 'revs' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'stopAfter must be never, cycles or minutes' });
+    send({ cmd: 'sweepOptions', fromDeg: 'left' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'fromDeg, toDeg and dwellMs must be numbers' });
+    send({ cmd: 'sweep', stopValue: '4' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'stopValue must be a number' });
+    send({ cmd: 'presetSave', name: '', mode: 'spin' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'preset needs a name, up to 63 bytes' });
+    send({ cmd: 'presetSave', name: 'x'.repeat(64), mode: 'spin' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'preset needs a name, up to 63 bytes' });
+    send({ cmd: 'presetSave', name: 'Capture', mode: 'capture' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'presetSave needs mode spin or sweep' });
+    send({ cmd: 'presetApply', id: 10 });
+    assert.deepEqual(await next(), { type: 'error', msg: 'no preset with that id' });
 }));
 
 test('clamps speed to the limits and max speed', () => withDevice(async ({ next, send, waitFor }) => {
@@ -213,6 +241,167 @@ test('sets zero at the current angle', () => withDevice(async ({ next, send, wai
     await waitFor((m) => isState(m) && m.motion === 'idle' && m.angle === 45);
     send({ cmd: 'setZero' });
     assert.equal((await waitFor(isState)).angle, 0);
+}));
+
+test('changes speed during a move', () => withDevice(async ({ next, send, waitFor }) => {
+    await next();
+    send({ cmd: 'settings', accel: 200 });
+    send({ cmd: 'speed', rpm: 2 });
+    send({ cmd: 'moveBy', deg: 360 });
+    await waitFor((m) => isState(m) && m.speed === 2);
+    send({ cmd: 'speed', rpm: 15 });
+    await waitFor((m) => isState(m) && m.speed === 15);
+    assert.equal((await waitFor((m) => isState(m) && m.motion === 'idle', 10000)).angle, 0);
+}));
+
+test('spins a set number of revolutions and lands back on its start angle', () => withDevice(async ({ next, send, waitFor }) => {
+    await next();
+    send({ cmd: 'settings', accel: 200 });
+    send({ cmd: 'speed', rpm: 20 });
+    send({ cmd: 'moveBy', deg: 45 });
+    await waitFor((m) => isState(m) && m.motion === 'idle' && m.angle === 45);
+
+    send({ cmd: 'spinOptions', stopAfter: 'revs', stopValue: 1 });
+    send({ cmd: 'run', dir: 'ccw' });
+    const running = await waitFor((m) => isState(m) && m.job?.type === 'spin' && m.speed < 0);
+    assert.equal(running.spinning, true);
+    assert.ok(running.job.revsLeft > 0 && running.job.revsLeft <= 1);
+    const done = await waitFor((m) => isState(m) && m.motion === 'idle', 10000);
+    assert.equal(done.angle, 45);
+    assert.equal(done.job, null);
+    assert.equal(done.spinning, false);
+}));
+
+test('spins for a set time, then ramps down', () => withDevice(async ({ next, send, waitFor }) => {
+    await next();
+    send({ cmd: 'settings', accel: 200 });
+    const started = Date.now();
+    send({ cmd: 'run', dir: 'cw', rpm: 10, stopAfter: 'minutes', stopValue: 0.1 });
+    const running = await waitFor((m) => isState(m) && m.motion === 'running');
+    assert.deepEqual(running.spin, { stopAfter: 'minutes', stopValue: 0.1 });
+    assert.equal(running.job.type, 'spin');
+    assert.ok(running.job.secondsLeft >= 5 && running.job.secondsLeft <= 6);
+    const ended = await waitFor((m) => isState(m) && m.job === null, 10000);
+    assert.ok(Date.now() - started >= 5900, 'stopped too early');
+    assert.notEqual(ended.motion, 'running');
+    await waitFor((m) => isState(m) && m.motion === 'idle');
+}));
+
+test('sweeps between two angles for a set number of cycles', () => withDevice(async ({ next, send, waitFor }) => {
+    await next();
+    send({ cmd: 'settings', accel: 200 });
+    send({ cmd: 'speed', rpm: 20 });
+    send({ cmd: 'sweep', fromDeg: -30, toDeg: 30, dwellMs: 300, stopAfter: 'cycles', stopValue: 2 });
+
+    // It goes to From first, the short way: counter-clockwise from 0 to 330.
+    const first = await waitFor((m) => isState(m) && m.job?.type === 'sweep' && m.speed !== 0);
+    assert.ok(first.speed < 0);
+    assert.deepEqual(first.job, { type: 'sweep', cycle: 1, cycles: 2 });
+    await waitFor((m) => isState(m) && m.motion === 'idle' && m.angle === 330 && m.job?.cycle === 1);
+    await waitFor((m) => isState(m) && m.motion === 'idle' && m.angle === 30 && m.job?.cycle === 1);
+    await waitFor((m) => isState(m) && m.job?.cycle === 2, 10000);
+    await waitFor((m) => isState(m) && m.motion === 'idle' && m.angle === 30 && m.job?.cycle === 2, 10000);
+
+    // A cycle is From to To and back, so it ends on From.
+    const done = await waitFor((m) => isState(m) && m.job === null, 10000);
+    assert.equal(done.motion, 'idle');
+    assert.equal(done.angle, 330);
+}));
+
+test('a timed sweep stops at the next end once time is up', () => withDevice(async ({ next, send, waitFor }) => {
+    await next();
+    send({ cmd: 'settings', accel: 200 });
+    send({ cmd: 'speed', rpm: 20 });
+    send({ cmd: 'sweepOptions', fromDeg: -30, toDeg: 30, dwellMs: 200, stopAfter: 'minutes', stopValue: 0.1 });
+    const started = Date.now();
+    send({ cmd: 'sweep' });
+    const running = await waitFor((m) => isState(m) && m.job?.type === 'sweep');
+    assert.ok(running.job.secondsLeft >= 5 && running.job.secondsLeft <= 6);
+    const done = await waitFor((m) => isState(m) && m.job === null, 12000);
+    assert.ok(Date.now() - started >= 5900, 'stopped too early');
+    assert.equal(done.motion, 'idle');
+    assert.ok([330, 30].includes(done.angle), `stopped at ${done.angle}, not an end`);
+}));
+
+test('refuses a sweep whose ends are the same angle', () => withDevice(async ({ next, send, waitFor }) => {
+    await next();
+    send({ cmd: 'sweep', fromDeg: 10, toDeg: 10 });
+    assert.deepEqual(await waitFor((m) => m.type === 'error'), { type: 'error', msg: 'From and To must be different angles' });
+    const state = await waitFor(isState);
+    assert.equal(state.job, null);
+    assert.equal(state.motion, 'idle');
+}));
+
+test('set zero during a sweep keeps it on the same ends', () => withDevice(async ({ next, send, waitFor }) => {
+    await next();
+    send({ cmd: 'settings', accel: 200 });
+    send({ cmd: 'speed', rpm: 20 });
+    send({ cmd: 'sweep', fromDeg: -30, toDeg: 30, dwellMs: 1000, stopAfter: 'cycles', stopValue: 1 });
+    await waitFor((m) => isState(m) && m.job?.type === 'sweep' && m.motion === 'idle' && m.angle === 30, 10000);
+
+    // Zero moves to To, so From is now 60 degrees counter-clockwise of it. The ends sit on
+    // half-steps: -30 and 30 are -341 and 341, so From is 682 half-steps (59.94 deg) back.
+    send({ cmd: 'setZero' });
+    const done = await waitFor((m) => isState(m) && m.job === null, 10000);
+    assert.equal(done.angle, 300.1);
+}));
+
+test('saves, loads and deletes presets', () => withDevice(async ({ next, nextPresets, send, waitFor }) => {
+    await next();
+    assert.deepEqual((await nextPresets()).presets, []);
+
+    send({ cmd: 'speed', rpm: 3 });
+    send({ cmd: 'spinOptions', stopAfter: 'revs', stopValue: 2 });
+    send({ cmd: 'presetSave', name: 'Slow two', mode: 'spin' });
+    assert.deepEqual((await nextPresets()).presets, [
+        { id: 0, name: 'Slow two', mode: 'spin', rpm: 3, stopAfter: 'revs', stopValue: 2 },
+    ]);
+
+    send({ cmd: 'speed', rpm: 8 });
+    send({ cmd: 'sweepOptions', fromDeg: -45, toDeg: 45, dwellMs: 1000, stopAfter: 'cycles', stopValue: 3 });
+    send({ cmd: 'presetSave', name: 'Wide sweep', mode: 'sweep' });
+    assert.deepEqual((await nextPresets()).presets[1], {
+        id: 1, name: 'Wide sweep', mode: 'sweep', rpm: 8,
+        fromDeg: -45, toDeg: 45, dwellMs: 1000, stopAfter: 'cycles', stopValue: 3,
+    });
+
+    // Loading sets the speed and that mode's options, and starts nothing.
+    send({ cmd: 'speed', rpm: 12 });
+    send({ cmd: 'spinOptions', stopAfter: 'never' });
+    send({ cmd: 'sweepOptions', fromDeg: 0, toDeg: 90 });
+    send({ cmd: 'presetApply', id: 0 });
+    const loaded = await waitFor((m) => isState(m) && m.rpm === 3 && m.sweep.toDeg === 90);
+    assert.deepEqual(loaded.spin, { stopAfter: 'revs', stopValue: 2 });
+    assert.equal(loaded.sweep.fromDeg, 0, 'a spin preset leaves the sweep options alone');
+    assert.equal(loaded.motion, 'idle');
+    assert.equal(loaded.job, null);
+
+    send({ cmd: 'presetApply', id: 1 });
+    const sweep = await waitFor((m) => isState(m) && m.rpm === 8);
+    assert.deepEqual(sweep.sweep, { fromDeg: -45, toDeg: 45, dwellMs: 1000, stopAfter: 'cycles', stopValue: 3 });
+
+    send({ cmd: 'presetDelete', id: 0 });
+    assert.deepEqual((await nextPresets()).presets.map((p) => p.name), ['Wide sweep']);
+    send({ cmd: 'presetApply', id: 0 });
+    assert.deepEqual(await waitFor((m) => m.type === 'error'), { type: 'error', msg: 'That preset was deleted' });
+}));
+
+test('saving under an existing name replaces it, and an 11th preset is refused', () => withDevice(async ({ next, nextPresets, send, waitFor }) => {
+    await next();
+    await nextPresets();
+    for (let i = 0; i < 10; i++) {
+        send({ cmd: 'presetSave', name: `Preset ${i}`, mode: 'spin' });
+        await nextPresets();
+    }
+
+    send({ cmd: 'speed', rpm: 9 });
+    send({ cmd: 'presetSave', name: 'Preset 4', mode: 'spin' });
+    const presets = (await nextPresets()).presets;
+    assert.equal(presets.length, 10);
+    assert.equal(presets[4].rpm, 9);
+
+    send({ cmd: 'presetSave', name: 'Preset 10', mode: 'spin' });
+    assert.deepEqual(await waitFor((m) => m.type === 'error'), { type: 'error', msg: 'All 10 presets are used. Delete one first.' });
 }));
 
 // Poll the setup page's status endpoint until it matches.

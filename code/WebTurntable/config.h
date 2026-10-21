@@ -29,4 +29,15 @@ constexpr float DEFAULT_ACCEL = 20.0f;
 // Speed the motor starts from and stops at without a ramp
 constexpr float START_RPM = 1.0f;
 
+// Stop conditions for spins and sweeps
+constexpr float MIN_STOP_REVS = 0.1f;
+constexpr float MAX_STOP_REVS = 1000.0f;
+constexpr float MIN_STOP_MINUTES = 0.1f;
+constexpr float MAX_STOP_MINUTES = 600.0f;
+constexpr uint32_t MAX_SWEEP_CYCLES = 1000;
+
+// Sweep ends stay within ten turns of zero, and the dwell at each end within a minute
+constexpr float MAX_SWEEP_DEG = 3600.0f;
+constexpr uint32_t MAX_DWELL_MS = 60000;
+
 #endif // CONFIG_H
