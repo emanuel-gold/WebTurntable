@@ -98,7 +98,7 @@ Requests are queued under a spinlock and picked up on the next control tick (at 
 
 **Idle.** The coils switch off when the motor stops, as in v1, so the motor stays cool. If the disk drifts during capture settle times, add an optional hold.
 
-**Limits** (`config.h`). Speed runs from 0.5 RPM up to the max speed setting (default 20, at most 25). Acceleration is 1–200 RPM/s (default 20). Measured 2026-10-21: 25 RPM is clean in half-step, full-step stalls at 25, and both stall at 30.
+**Limits** (`config.h`). Speed runs from 0.5 RPM up to the max speed setting (default and ceiling both 20). Acceleration is 1–200 RPM/s (default 20). Measured 2026-10-21: 25 RPM is clean in half-step, full-step stalls at 25, and both stall at 30. The ceiling is 20 by choice: faster isn't needed, and it leaves margin.
 
 **Command flow.** The AsyncTCP task only parses and validates JSON, replying with an error if a command is bad. Valid commands go on a FreeRTOS queue, and `loop()` runs them, so settings and motion requests are only touched from one thread.
 
@@ -172,7 +172,7 @@ One endpoint, `/ws`, carrying JSON text frames. Each client-to-device command ha
 {"cmd":"wifiSetup"}                             // halt, save, restart into Wi-Fi setup
 ```
 
-- Speeds are clamped to 0.5 RPM–max speed, max speed to 0.5–25, and acceleration to 1–200.
+- Speeds are clamped to 0.5 RPM–max speed, max speed to 0.5–20, and acceleration to 1–200.
 - Lowering the max speed below the speed setting pulls the setting down with it.
 - Moves run at the speed setting, and a move ends a spin.
 
@@ -180,7 +180,7 @@ One endpoint, `/ws`, carrying JSON text frames. Each client-to-device command ha
 {"type":"state","motion":"moving","angle":120.3,"speed":-4.87,"rpm":5.00,"dir":"cw","spinning":false,
  "settings":{"driveMode":"half","maxRpm":20.0,"accel":20.0},
  "wifi":{"mode":"lan","ssid":"Home","ip":"192.168.1.42","rssi":-58},
- "limits":{"minRpm":0.5,"maxRpm":25,"minAccel":1,"maxAccel":200}}
+ "limits":{"minRpm":0.5,"maxRpm":20,"minAccel":1,"maxAccel":200}}
 {"type":"error","msg":"run needs dir cw or ccw"}
 ```
 

@@ -65,7 +65,7 @@ Put a piece of tape on the disk and a mark on the body next to it, so you can se
 1. **Smooth start and stop:** spin CW at 5 RPM, then STOP. Speed should ramp up and down with no jerk. Try changing direction while spinning (CW, then CCW): it should slow, reverse and speed up again.
 2. **360° return:** press **Set zero here**, then Rotate by `360`. The tape should land back on the mark, and the dial should read `0.0°`.
 3. **10-revolution test:** Rotate by `3600` at 15 RPM (about 40 seconds). If the tape ends up off the mark, note roughly how far and in which direction. That measures the real steps per revolution.
-4. **Max speed:** in Settings, raise Max speed to 25 (the most it allows), then spin at 15, 20 and 25 RPM, watching for buzzing, stalling, or the tape drifting off the mark after a Rotate by 360. Note the highest speed that stays clean, in both half-step and full-step mode. Measured 2026-10-21: 25 is clean in half-step, but full-step stalls at 25.
+4. **Max speed:** the firmware caps speed at 20 RPM. Spin at 20 in both half-step and full-step, watching for buzzing, stalling, or the tape drifting off the mark after a Rotate by 360. Measured 2026-10-21: half-step was clean up to 25, full-step stalled at 25, and both stalled at 30.
 5. **Two phones:** open the page on two phones (or a phone and the PC). Moves made on one should show live on the other's dial.
 6. **Quick nudges:** press +15° several times quickly. The moves should add up into one smooth motion, and land exactly on a multiple of 15°.
 

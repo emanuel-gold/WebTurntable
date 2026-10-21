@@ -103,7 +103,7 @@ test('sends the full state on connect', () => withDevice(async ({ next }) => {
     assert.equal(msg.dir, 'cw');
     assert.equal(msg.spinning, false);
     assert.deepEqual(msg.settings, { driveMode: 'half', maxRpm: 20, accel: 20 });
-    assert.deepEqual(msg.limits, { minRpm: 0.5, maxRpm: 25, minAccel: 1, maxAccel: 200 });
+    assert.deepEqual(msg.limits, { minRpm: 0.5, maxRpm: 20, minAccel: 1, maxAccel: 200 });
 }));
 
 test('broadcasts each change to every client', () => withDevice(async (a, server) => {

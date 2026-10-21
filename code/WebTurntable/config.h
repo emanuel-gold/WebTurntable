@@ -16,7 +16,8 @@ constexpr float HALF_STEPS_PER_REV = 4096.0f;
 // Speed limits in RPM. maxRpm is a user setting between MIN_RPM and MAX_RPM_LIMIT.
 constexpr float MIN_RPM = 0.5f;
 // Measured 2026-10-21: 25 RPM is clean in half-step; full-step stalls at 25, and both stall at 30.
-constexpr float MAX_RPM_LIMIT = 25.0f;
+// Capped at 20 by choice: faster isn't needed, and it leaves margin.
+constexpr float MAX_RPM_LIMIT = 20.0f;
 constexpr float DEFAULT_MAX_RPM = 20.0f;
 constexpr float DEFAULT_RPM = 5.0f;
 

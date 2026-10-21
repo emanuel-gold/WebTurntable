@@ -82,7 +82,7 @@ Same features as v1, running on the DevKit.
 - [x] Coils off when idle, as in v1.
 - [ ] Verify steps per revolution with a 10-revolution test against the index mark (expected 2037.886 full steps). Hardware test: Rotate by 3600°. Done once on 2026-10-21: it stopped about 18.5 mm short at the 50 mm rim, about 2.1° per revolution, or roughly 4100 half-steps per revolution. That matches the 64:1 variant, so `HALF_STEPS_PER_REV` is now 4096. Rerun to confirm.
 - [x] Speed set in RPM, with seconds per revolution shown alongside, and a slider linear in RPM.
-- [x] Find the real max reliable speed on hardware (v1 tops out around 16 RPM). Measured 2026-10-21: 25 RPM is clean in half-step, full-step stalls at 25, and both stall at 30. The limit is now 25 and the default 20.
+- [x] Find the real max reliable speed on hardware (v1 tops out around 16 RPM). Measured 2026-10-21: 25 RPM is clean in half-step, full-step stalls at 25, and both stall at 30. Capped at 20 RPM by the user's choice.
 - [x] Angle control: live angle dial, Set zero, Rotate by (quick ± buttons and a custom value), Go to angle (shortest path or a chosen direction).
 - [x] WebSocket protocol v2 ([FIRMWARE.md](FIRMWARE.md#websocket-protocol-v2)) and UI rework: direction as buttons, plus an always-visible STOP.
 - [x] Mock server speaks v2 and simulates the motion engine.
@@ -203,7 +203,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-21 | Status LED moved from GPIO 23 to GPIO 2, and the reset button from GPIO 22 to GPIO 4. With D4, D2, D15 and GND adjacent, one 4-pin housing carries both (D15 empty). D5, the user's suggestion, was ruled out: it's a strapping pin that outputs during boot, and the button is held at power-up. GPIO 2 is a strapping pin too, but it's safe as an LED output, which only pulls it gently low. |
 | 2026-10-21 | Settings save during spins, not only when idle, so a speed change mid-spin survives a power cut (found in testing). Moves still wait for idle, because flash writes pause stepping. |
 | 2026-10-21 | `HALF_STEPS_PER_REV` = 4096 (the 64:1 variant), from the 10-revolution test (about 4100 measured). A 3D-printed disk and a hand-measured mark don't justify a fractional value; a rerun checks for any residual. |
-| 2026-10-21 | Max speed limit 25 RPM, default 20, from hardware tests. |
+| 2026-10-21 | Max speed capped at 20 RPM (limit and default). Half-step was clean to 25, but the user doesn't need more than 20, and it leaves margin for full-step, which stalled at 25. |
 | 2026-10-21 | The iPhone not reopening the captive sheet on a rejoin is an iOS quirk: it remembers networks. It's documented with workarounds rather than fixed in firmware. |
 
 ## Open questions
