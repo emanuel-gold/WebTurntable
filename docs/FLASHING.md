@@ -2,7 +2,7 @@
 
 How to put the v2 firmware and web UI on the DevKit from Windows. One script does it all: `tools\flash.cmd`. It runs arduino-cli with the versions pinned in [`code/WebTurntable/sketch.yaml`](../code/WebTurntable/sketch.yaml), so what you flash is exactly what was compile-checked.
 
-Run every command from the repo folder, in PowerShell or Command Prompt.
+Run every command from the repo folder, in PowerShell, Command Prompt or Git Bash. The commands are the same everywhere. Git Bash also accepts forward slashes, for example `tools/flash.cmd all` or `-Sketch code/Basic`.
 
 ## One-time setup
 
@@ -86,6 +86,7 @@ Put a piece of tape on the disk and a mark on the body next to it, so you can se
 | `turntable.local` doesn't load, but the IP address does | The phone doesn't support mDNS names (some Android phones), or it's sending lookups over cellular. Use the IP address. |
 | Blank page or 404 | The web UI isn't on the board. Run `tools\flash.cmd webui`. |
 | The board keeps resetting, and the log shows `Brownout detector was triggered` | Power problem. See [HARDWARE.md](HARDWARE.md#power): the 470 µF capacitor, and a 1 A supply. |
+| In Git Bash, `tools/flash.cmd monitor` shows nothing, or Ctrl+C doesn't stop it | The standalone Git Bash window doesn't always pass console input and output through. Run `winpty tools/flash.cmd monitor` there, or use the Git Bash terminal inside VS Code. |
 | PowerShell says running scripts is disabled | Use `tools\flash.cmd`, not `flash.ps1`. The `.cmd` wrapper bypasses the policy for that one run without changing any settings. |
 
 ## What the script runs
