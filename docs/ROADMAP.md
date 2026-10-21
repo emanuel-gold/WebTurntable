@@ -12,9 +12,11 @@ _Last updated 2026-10-21._
 - **Phases 2 and W are flashed and mostly confirmed on hardware (2026-10-21).**
   - **Phase 2 passed:** smooth start, stop and reversal; two devices showing live updates; quick nudges merging.
   - **Phase 2 problem:** positioning stops short. A 360° Rotate by ended about 2.3 mm short at the tape mark, and 3600° about 18.5 mm short. Both runs are short by a similar amount per revolution, and they ran at different speeds, so this looks like the steps-per-revolution constant rather than skipped steps. Assuming the tape sits at the disk's 50 mm radius, that's about 2.1° per revolution, so roughly 4100 half-steps per revolution instead of 4075.77. That's close to the 64:1 (2048 full steps) variant of the 28BYJ-48.
-  - **Phase W passed:** setup from the iPhone, joining, reconnect after a power cycle, `turntable.local` on the phone and PC, the wrong-password path, the router-off fallback, and Change Wi-Fi network.
-  - **Still to test:** the reset button (D22 to GND at power-up), access-point mode, and max speed. See `todo_checks.md`.
+  - **Phase W passed:** setup from the iPhone, joining, reconnect after a power cycle, `turntable.local` on the phone and PC, the wrong-password path, the router-off fallback, Change Wi-Fi network, and access-point mode (controls load in the captive sheet, and a power cycle goes back to the home Wi-Fi).
+  - **Problem found (resume-on-power-up):** in access-point mode the user started a CW spin and cut the power. At power-up it spun again straight away, and nothing could stop it until it rejoined the home Wi-Fi (about 20 s or more). A saved spin resumes before any control page is reachable. Needs a decision: drop auto-resume, or make it an opt-in setting.
+  - **Still to test:** the reset button (D22 to GND at power-up) and max speed. See `todo_checks.md`.
 - **Next:**
+  - Decide on resume-on-power-up, and fix it.
   - Fix the steps-per-revolution constant (or add a calibration), then rerun the 10-revolution test.
   - Finish the remaining tests.
   - Then Phase 3.
