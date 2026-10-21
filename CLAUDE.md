@@ -13,7 +13,7 @@ Push to `origin` only when the user asks. Never push or open PRs against `upstre
 
 Work directly on main (renamed from master); there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
 
-**Current state:** Phase 1 is done and confirmed on hardware. Phase 2 (motion engine, protocol v2, new UI) and Phase W (home Wi-Fi with captive-portal setup) are code-complete and tested against the mock, and waiting on the user's hardware test.
+**Current state:** Phases 0, 1, 2 and W are done and confirmed on hardware: the ESP32 port, the motion engine with protocol v2 and the new UI, and home Wi-Fi with captive-portal setup. Next is Phase 3 (modes, timer, presets).
 
 **In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
 
@@ -97,7 +97,8 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
 ## Known issues
 
 - **Measured on 2026-10-21:**
-  - The motor is the 64:1 variant: `HALF_STEPS_PER_REV` = 4096. A rerun of the 10-revolution test is pending.
+  - The motor is the 64:1 variant: `HALF_STEPS_PER_REV` = 4096, confirmed by a 3600° test.
+  - The motor shaft has a little play, so reversals miss by that much. Backlash compensation is a backlog item.
   - Half-step was clean up to 25 RPM; full-step stalled at 25. Speed is capped at 20 by choice (`MAX_RPM_LIMIT` and `DEFAULT_MAX_RPM` are both 20).
 - **iPhone:** rejoining `TURNTABLE` doesn't always reopen the captive sheet, because iOS remembers the network. Forgetting the network, or opening `http://192.168.4.5` in Safari, works.
 - **Fixed in Phase 1, still present at the `v1-esp8266` tag:** the UI sends `2` for CCW, but v1's `RotateDirection::CCW` was `3`. CCW still worked, because any value other than CW steps CCW, but the logs showed `direction=UNKNOWN`.

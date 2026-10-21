@@ -8,18 +8,13 @@ Mark items `[x]` as they land.
 
 _Last updated 2026-10-21._
 
-- **Done:** planning, Phase 0, and Phase 1 (confirmed on hardware 2026-10-15: motor control from the UI, both addresses, settings across a power cycle).
-- **Phases 2 and W are flashed and mostly confirmed on hardware (2026-10-21).**
-  - **Phase 2 passed:** smooth start, stop and reversal; two devices showing live updates; quick nudges merging.
-  - **Phase 2 problem:** positioning stops short. A 360° Rotate by ended about 2.3 mm short at the tape mark, and 3600° about 18.5 mm short. Both runs are short by a similar amount per revolution, and they ran at different speeds, so this looks like the steps-per-revolution constant rather than skipped steps. Assuming the tape sits at the disk's 50 mm radius, that's about 2.1° per revolution, so roughly 4100 half-steps per revolution instead of 4075.77. That's close to the 64:1 (2048 full steps) variant of the 28BYJ-48.
-  - **Phase W passed:** setup from the iPhone, joining, reconnect after a power cycle, `turntable.local` on the phone and PC, the wrong-password path, the router-off fallback, Change Wi-Fi network, and access-point mode (controls load in the captive sheet, and a power cycle goes back to the home Wi-Fi).
-  - **Problem found and fixed in code (resume-on-power-up):** in access-point mode the user started a CW spin and cut the power. At power-up it spun again straight away, and nothing could stop it until it rejoined the home Wi-Fi. The user decided a power loss must never restart a spin, so the disk now always starts stopped. Needs a firmware flash and a recheck.
-  - **Still to test:** the reset button (D4 to GND at power-up) and max speed. See `todo_checks.md`.
-- **Next:**
-  - Flash the no-resume fix and the CW/CCW toggle (`toolslash.cmd all`), and recheck both.
-  - Fix the steps-per-revolution constant (or add a calibration), then rerun the 10-revolution test.
-  - Finish the remaining tests.
-  - Then Phase 3.
+- **Done:** planning, Phases 0, 1, 2 and W, all confirmed on hardware.
+  - **Phase 2 (motion engine):** smooth ramps, angle control, protocol v2 and the new UI.
+    - Calibrated to the 64:1 motor (4096 half-steps per revolution). A 3600° test now lands on the mark.
+    - Speed is capped at 20 RPM. Spins don't resume after a power loss, and CW/CCW are press-to-toggle.
+  - **Phase W (Wi-Fi):** home Wi-Fi with captive-portal setup, an access-point fallback, Change Wi-Fi network, and the reset button on GPIO 4.
+- **Known limitation:** the motor shaft has a little play, so a reversal (for example +360 then −360) misses by that much. Backlash compensation was drafted but deferred to the backlog (2026-10-21).
+- **Next:** Phase 3 (modes, timer, presets). Phase E (enclosure) can run alongside.
 - **Deferred:** the BOOT-button question (open question 2), at the user's call. Phase E needs open question 1.
 - **Working style:**
   - Work on main. v1 stays reproducible at tag `v1-esp8266`.
@@ -74,24 +69,24 @@ Same features as v1, running on the DevKit.
 
 **Done when:** the existing UI drives the motor on the DevKit, and settings survive a power cycle.
 
-## Phase 2: Motion engine and core UI
+## Phase 2: Motion engine and core UI (done 2026-10-21)
 
 - [x] Hardware-timer step generation that replaces `delayMicroseconds` in `loop()`, with a position counter in half-steps.
 - [x] Trapezoidal acceleration and deceleration on start, stop, and speed or direction changes.
 - [x] Drive modes: half-step (smooth, default) and two-phase full-step (more torque). Two-phase full-step replaces v1's one-coil "full" pattern.
 - [x] Coils off when idle, as in v1.
-- [ ] Verify steps per revolution with a 10-revolution test against the index mark (expected 2037.886 full steps). Hardware test: Rotate by 3600°. Done once on 2026-10-21: it stopped about 18.5 mm short at the 50 mm rim, about 2.1° per revolution, or roughly 4100 half-steps per revolution. That matches the 64:1 variant, so `HALF_STEPS_PER_REV` is now 4096. Rerun to confirm.
+- [x] Verify steps per revolution with a 10-revolution test against the index mark. With the datasheet's 2037.886 full steps, it stopped about 18.5 mm short at the 50 mm rim, roughly 4100 half-steps per revolution. That matches the 64:1 variant, so `HALF_STEPS_PER_REV` is 4096. The rerun on 2026-10-21 landed on the mark.
 - [x] Speed set in RPM, with seconds per revolution shown alongside, and a slider linear in RPM.
 - [x] Find the real max reliable speed on hardware (v1 tops out around 16 RPM). Measured 2026-10-21: 25 RPM is clean in half-step, full-step stalls at 25, and both stall at 30. Capped at 20 RPM by the user's choice.
 - [x] Angle control: live angle dial, Set zero, Rotate by (quick ± buttons and a custom value), Go to angle (shortest path or a chosen direction).
 - [x] WebSocket protocol v2 ([FIRMWARE.md](FIRMWARE.md#websocket-protocol-v2)) and UI rework: direction as buttons, plus an always-visible STOP.
 - [x] Mock server speaks v2 and simulates the motion engine.
-- [ ] Hardware test by the user ([Phase 2 hardware checks](FLASHING.md#phase-2-hardware-checks)).
-- [ ] Stretch experiment: PWM microstepping through the ULN2003 (ESP32 LEDC) for quieter low-speed motion. Keep it only if it is clearly better.
+- [x] Hardware test by the user ([Phase 2 hardware checks](FLASHING.md#phase-2-hardware-checks)): all passed on 2026-10-21.
+- Stretch experiment (PWM microstepping) moved to the backlog when the phase closed.
 
 **Done when:** start and stop look smooth, a 360° Rotate by returns to the same mark, and two phones show the angle updating live.
 
-## Phase W: Wi-Fi setup (next, before Phase 3)
+## Phase W: Wi-Fi setup (done 2026-10-21)
 
 Joining the user's network like a smart home device, instead of always being an access point. Decided 2026-10-16, after the access point proved too fiddly in daily use (see Decisions). Built in `wireless.cpp`; see [FIRMWARE.md](FIRMWARE.md#wi-fi-and-setup-phase-w-wirelesscpp).
 
@@ -103,8 +98,8 @@ Joining the user's network like a smart home device, instead of always being an 
 - [x] **Reset:** a dedicated push button on GPIO 4 (moved from 22 on 2026-10-21), held at power-up, starts setup. The old network stays saved until a new one connects. (BOOT/GPIO0 can't be used, because holding it at power-up enters flashing mode.) The button needs a hole in the enclosure (Phase E).
 - [x] **Change Wi-Fi network** in the control UI's settings (two taps): restarts into setup.
 - [x] Mock server and docs (README, FLASHING.md "connecting" steps) updated for the new flow.
-- [ ] Hardware test by the user: first setup from the iPhone, a reboot onto home Wi-Fi, `turntable.local` from the phone and PC, the router-off fallback, the reset button, Change Wi-Fi, and access-point mode.
-- [ ] Not a blocker: **Wi-Fi status LED** showing setup, connecting, connected, and access-point-only. Either blink patterns on the existing status LED (GPIO 2) or a second LED.
+- [x] Hardware test by the user: first setup from the iPhone, a reboot onto home Wi-Fi, `turntable.local` from the phone and PC, the router-off fallback, the reset button, Change Wi-Fi, and access-point mode. All passed on 2026-10-21. One iOS quirk: a rejoin doesn't always reopen the captive sheet, which is documented in FLASHING.md.
+- The Wi-Fi status LED (not a blocker) moved to the backlog when the phase closed.
 
 **Done when:** a fresh turntable is set up from the iPhone without typing an address, reboots straight onto the home Wi-Fi, and stays reachable at `turntable.local` from the phone and the PC with both still on the internet.
 
@@ -150,6 +145,11 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 
 - adjust RPM in real time  while the motor is moving
   - Confirmed 2026-10-21: spins (CW/CCW buttons) follow the slider live, but moves (±15/45/90, Rotate by, Go to) keep the speed they started with. The fix is small: on a `speed` command during a move, re-request the same target at the new speed.
+- **Backlash compensation** for the play in the motor shaft (wishlist, deferred 2026-10-21). A reversal, such as +360 then −360, misses by the amount of play. The user confirmed it's in the motor shaft, not the printed disk.
+  - Approach, drafted and then shelved: after each change of direction, the step ISR takes up a set number of half-steps that turn the rotor but don't count toward the position.
+  - The amount would be a "Backlash (°)" setting, calibrated by Set zero, Rotate by 90, then −90, raising it until the disk lands on the mark. It adds one float to the saved settings, which means a `MAGIC` bump.
+- **Wi-Fi status LED** (wanted, not a blocker): show setup, connecting, connected and access-point-only. Either blink patterns on the existing status LED (GPIO 2, which also drives the onboard blue LED) or a second LED.
+- **PWM microstepping** through the ULN2003 (ESP32 LEDC), for quieter low-speed motion. Keep it only if it's clearly better. Moved from Phase 2's stretch goals.
 - Hall sensor and magnet homing, for an absolute angle that survives power cycles.
 - Capacitive touch controls (start/stop, direction) through the case wall.
 - Lighting control beyond NeoPixels. Examples: a switched or dimmed USB output for a USB light, or a desk lamp on a smart plug (which would need the turntable to join a Wi-Fi network). Needs exploration first.
@@ -205,6 +205,9 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-21 | `HALF_STEPS_PER_REV` = 4096 (the 64:1 variant), from the 10-revolution test (about 4100 measured). A 3D-printed disk and a hand-measured mark don't justify a fractional value; a rerun checks for any residual. |
 | 2026-10-21 | Max speed capped at 20 RPM (limit and default). Half-step was clean to 25, but the user doesn't need more than 20, and it leaves margin for full-step, which stalled at 25. |
 | 2026-10-21 | The iPhone not reopening the captive sheet on a rejoin is an iOS quirk: it remembers networks. It's documented with workarounds rather than fixed in firmware. |
+| 2026-10-21 | The settings inputs (max speed, acceleration) clamp to the firmware's limits in the page, and say so, instead of accepting a value that the firmware quietly clamps. |
+| 2026-10-21 | Backlash compensation deferred to the backlog; the small reversal error from shaft play is acceptable for now. |
+| 2026-10-21 | Phases 2 and W closed after the hardware checks passed. |
 
 ## Open questions
 
