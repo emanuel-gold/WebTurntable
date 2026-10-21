@@ -174,6 +174,20 @@ function onSpeedInput(final) {
     }
 }
 
+// Read a settings field and clamp it to its allowed range, saying so if it was out of range.
+function readSetting(input, min, max, label, unit) {
+    var value = readNumber(input);
+    if (value === null) {
+        return null;
+    }
+    var clamped = Math.min(Math.max(value, min), max);
+    if (clamped !== value) {
+        input.value = clamped;
+        showToast(label + ' goes from ' + min + ' to ' + max + ' ' + unit);
+    }
+    return clamped;
+}
+
 function readNumber(input) {
     var value = parseFloat(input.value);
     if (!isFinite(value)) {
@@ -254,14 +268,14 @@ function onLoad() {
     });
 
     el('accel').addEventListener('change', function () {
-        var value = readNumber(el('accel'));
+        var value = readSetting(el('accel'), state.limits.minAccel, state.limits.maxAccel, 'Acceleration', 'RPM/s');
         if (value !== null) {
             send({ cmd: 'settings', accel: value });
         }
     });
 
     el('max-rpm').addEventListener('change', function () {
-        var value = readNumber(el('max-rpm'));
+        var value = readSetting(el('max-rpm'), state.limits.minRpm, state.limits.maxRpm, 'Max speed', 'RPM');
         if (value !== null) {
             send({ cmd: 'settings', maxRpm: value });
         }
