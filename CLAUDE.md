@@ -96,5 +96,8 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
 
 ## Known issues
 
-- **Not measured yet:** the max reliable speed and the real steps per revolution (Phase 2 hardware checks). Until then, `DEFAULT_MAX_RPM` is 15 and `HALF_STEPS_PER_REV` is the datasheet value.
+- **Measured on 2026-10-21:**
+  - The motor is the 64:1 variant: `HALF_STEPS_PER_REV` = 4096. A rerun of the 10-revolution test is pending.
+  - Max speed is 25 RPM in half-step; full-step stalls at 25. `MAX_RPM_LIMIT` is 25 and `DEFAULT_MAX_RPM` is 20.
+- **iPhone:** rejoining `TURNTABLE` doesn't always reopen the captive sheet, because iOS remembers the network. Forgetting the network, or opening `http://192.168.4.5` in Safari, works.
 - **Fixed in Phase 1, still present at the `v1-esp8266` tag:** the UI sends `2` for CCW, but v1's `RotateDirection::CCW` was `3`. CCW still worked, because any value other than CW steps CCW, but the logs showed `direction=UNKNOWN`.

@@ -8,13 +8,16 @@ const uint8_t MOTOR_PINS[] = {33, 25, 26, 27};  // ULN2003 IN1-IN4
 const uint8_t LED_PIN = 2;                      // Status LED through 220 ohm, active high (the onboard blue LED too)
 const uint8_t RESET_BUTTON_PIN = 4;             // Push button to GND; held at power-up, starts Wi-Fi setup
 
-// 28BYJ-48 gear ratio ~63.684:1, so one revolution of the disk is 2037.886 full steps
-constexpr float HALF_STEPS_PER_REV = 4075.772f;
+// This motor is the exact 64:1 variant of the 28BYJ-48: 2048 full steps per revolution.
+// Measured 2026-10-21: with the datasheet's 63.684:1 (4075.77 half-steps), ten revolutions
+// stopped about 18.5 mm short at the 50 mm rim, which works out to about 4100 half-steps.
+constexpr float HALF_STEPS_PER_REV = 4096.0f;
 
 // Speed limits in RPM. maxRpm is a user setting between MIN_RPM and MAX_RPM_LIMIT.
 constexpr float MIN_RPM = 0.5f;
-constexpr float MAX_RPM_LIMIT = 30.0f;
-constexpr float DEFAULT_MAX_RPM = 15.0f;
+// Measured 2026-10-21: 25 RPM is clean in half-step; full-step stalls at 25, and both stall at 30.
+constexpr float MAX_RPM_LIMIT = 25.0f;
+constexpr float DEFAULT_MAX_RPM = 20.0f;
 constexpr float DEFAULT_RPM = 5.0f;
 
 // Acceleration in RPM per second, a user setting

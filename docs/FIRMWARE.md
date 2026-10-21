@@ -56,7 +56,7 @@ arduino-cli compile --profile esp32 code/WebTurntable
 
 ## Motion engine
 
-**Units.** Position is a signed 32-bit count of half-steps (`HALF_STEPS_PER_REV` in `config.h`). The 28BYJ-48 gear ratio is about 63.684:1, so one revolution is 2037.886 full steps, or 4075.77 half-steps. The commonly quoted 2048 would be 0.5% off, about 1.8° per revolution. The disk sits directly on the shaft, so one half-step is about 0.088° of disk rotation. Phase 2 confirms the ratio on the real motor.
+**Units.** Position is a signed 32-bit count of half-steps (`HALF_STEPS_PER_REV` in `config.h`). 28BYJ-48s come in two gear ratios: about 63.684:1 (2037.886 full steps per revolution) and exactly 64:1 (2048). This one measured as the 64:1 variant (2026-10-21), so one revolution is 4096 half-steps. With the datasheet value, ten revolutions stopped about 18.5 mm short at the 50 mm rim, about 2.1° per revolution, which works out to roughly 4100 half-steps. The disk sits directly on the shaft, so one half-step is about 0.088° of disk rotation.
 
 **Phase table.** One 8-entry half-step table, as in v1:
 
@@ -98,7 +98,7 @@ Requests are queued under a spinlock and picked up on the next control tick (at 
 
 **Idle.** The coils switch off when the motor stops, as in v1, so the motor stays cool. If the disk drifts during capture settle times, add an optional hold.
 
-**Limits** (`config.h`). Speed runs from 0.5 RPM up to the max speed setting (default 15, at most 30). Acceleration is 1–200 RPM/s (default 20). The real max reliable speed has to be measured on hardware (Phase 2).
+**Limits** (`config.h`). Speed runs from 0.5 RPM up to the max speed setting (default 20, at most 25). Acceleration is 1–200 RPM/s (default 20). Measured 2026-10-21: 25 RPM is clean in half-step, full-step stalls at 25, and both stall at 30.
 
 **Command flow.** The AsyncTCP task only parses and validates JSON, replying with an error if a command is bad. Valid commands go on a FreeRTOS queue, and `loop()` runs them, so settings and motion requests are only touched from one thread.
 
@@ -168,19 +168,19 @@ One endpoint, `/ws`, carrying JSON text frames. Each client-to-device command ha
 {"cmd":"moveBy","deg":-90}                      // relative, positive clockwise
 {"cmd":"moveTo","deg":180,"dir":"shortest"}     // dir: shortest (default), cw or ccw
 {"cmd":"setZero"}
-{"cmd":"settings","driveMode":"half","maxRpm":15,"accel":20}   // any subset
+{"cmd":"settings","driveMode":"half","maxRpm":20,"accel":20}   // any subset
 {"cmd":"wifiSetup"}                             // halt, save, restart into Wi-Fi setup
 ```
 
-- Speeds are clamped to 0.5 RPM–max speed, max speed to 0.5–30, and acceleration to 1–200.
+- Speeds are clamped to 0.5 RPM–max speed, max speed to 0.5–25, and acceleration to 1–200.
 - Lowering the max speed below the speed setting pulls the setting down with it.
 - Moves run at the speed setting, and a move ends a spin.
 
 ```json
 {"type":"state","motion":"moving","angle":120.3,"speed":-4.87,"rpm":5.00,"dir":"cw","spinning":false,
- "settings":{"driveMode":"half","maxRpm":15.0,"accel":20.0},
+ "settings":{"driveMode":"half","maxRpm":20.0,"accel":20.0},
  "wifi":{"mode":"lan","ssid":"Home","ip":"192.168.1.42","rssi":-58},
- "limits":{"minRpm":0.5,"maxRpm":30,"minAccel":1,"maxAccel":200}}
+ "limits":{"minRpm":0.5,"maxRpm":25,"minAccel":1,"maxAccel":200}}
 {"type":"error","msg":"run needs dir cw or ccw"}
 ```
 

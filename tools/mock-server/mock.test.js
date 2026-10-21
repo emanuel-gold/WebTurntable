@@ -102,8 +102,8 @@ test('sends the full state on connect', () => withDevice(async ({ next }) => {
     assert.equal(msg.rpm, 5);
     assert.equal(msg.dir, 'cw');
     assert.equal(msg.spinning, false);
-    assert.deepEqual(msg.settings, { driveMode: 'half', maxRpm: 15, accel: 20 });
-    assert.deepEqual(msg.limits, { minRpm: 0.5, maxRpm: 30, minAccel: 1, maxAccel: 200 });
+    assert.deepEqual(msg.settings, { driveMode: 'half', maxRpm: 20, accel: 20 });
+    assert.deepEqual(msg.limits, { minRpm: 0.5, maxRpm: 25, minAccel: 1, maxAccel: 200 });
 }));
 
 test('broadcasts each change to every client', () => withDevice(async (a, server) => {
@@ -136,7 +136,7 @@ test('rejects bad commands with an error to the sender only', () => withDevice(a
 test('clamps speed to the limits and max speed', () => withDevice(async ({ next, send, waitFor }) => {
     await next();
     send({ cmd: 'speed', rpm: 99 });
-    assert.equal((await waitFor(isState)).rpm, 15);
+    assert.equal((await waitFor(isState)).rpm, 20);
     send({ cmd: 'speed', rpm: 0 });
     assert.equal((await waitFor(isState)).rpm, 0.5);
 

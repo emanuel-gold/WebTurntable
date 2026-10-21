@@ -8,10 +8,10 @@
 // "wrongpassword" fails, so the error path can be tried.
 
 // Constants copied from config.h.
-const HALF_STEPS_PER_REV = 4075.772;
+const HALF_STEPS_PER_REV = 4096;
 const MIN_RPM = 0.5;
-const MAX_RPM_LIMIT = 30;
-const DEFAULT_MAX_RPM = 15;
+const MAX_RPM_LIMIT = 25;
+const DEFAULT_MAX_RPM = 20;
 const DEFAULT_RPM = 5;
 const MIN_ACCEL = 1;
 const MAX_ACCEL = 200;
