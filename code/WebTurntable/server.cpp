@@ -33,7 +33,7 @@ namespace
 		uint32_t magic        = MAGIC;
 		float rpm             = DEFAULT_RPM;
 		Direction dir         = Direction::CW;
-		bool spinning         = false;    // Resume spinning after a power cycle, as v1 did
+		bool spinning         = false;    // Runtime only: cleared at load, so a power cut never restarts a spin
 		DriveMode driveMode   = DriveMode::Half;
 		float maxRpm          = DEFAULT_MAX_RPM;
 		float accel           = DEFAULT_ACCEL;
@@ -187,6 +187,7 @@ namespace
 		loaded.accel = clampFloat(loaded.accel, MIN_ACCEL, MAX_ACCEL);
 		loaded.dir = loaded.dir == Direction::CCW ? Direction::CCW : Direction::CW;
 		loaded.driveMode = loaded.driveMode == DriveMode::Full ? DriveMode::Full : DriveMode::Half;
+		loaded.spinning = false;    // Always start stopped after power-up
 		settings = loaded;
 		logSettings("Settings loaded:");
 		return true;
@@ -376,26 +377,13 @@ namespace
 				}
 				settings.dir = command.dir;
 				settings.spinning = true;
-				// Saves wait for idle (flash writes pause the step timer), so a spin that
-				// starts from rest is saved first, to resume after a power cycle
-				if (status.state == MotionState::Idle)
-				{
-					saveTurntableState();
-				}
-				else
-				{
-					queueSettingsSave();
-				}
+				queueSettingsSave();
 				motionRun(settings.rpm, settings.dir);
 				break;
 
 			case CommandType::Stop:
 			case CommandType::Halt:
-				if (settings.spinning)
-				{
-					settings.spinning = false;
-					queueSettingsSave();
-				}
+				settings.spinning = false;
 				if (command.type == CommandType::Halt)
 				{
 					motionHalt();
@@ -436,11 +424,7 @@ namespace
 					}
 					targetDeg = here + delta;
 				}
-				if (settings.spinning)
-				{
-					settings.spinning = false;
-					queueSettingsSave();
-				}
+				settings.spinning = false;
 				moveTargetDeg = targetDeg;
 				moveTargetPos = motionDegreesToHalfSteps(targetDeg);
 				motionMoveTo(moveTargetPos, settings.rpm);
@@ -568,10 +552,6 @@ void initWebserver()
 	loadTurntableState();
 	motionSetDriveMode(settings.driveMode);
 	motionSetAcceleration(settings.accel);
-	if (settings.spinning)
-	{
-		motionRun(settings.rpm, settings.dir);
-	}
 
 	// Join the saved Wi-Fi network, or start setup; also adds the setup page routes
 	networkBegin(server);

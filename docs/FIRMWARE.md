@@ -212,7 +212,8 @@ Directions are strings rather than enum numbers, which removes the v1 CW/OFF/CCW
 - **Last-used state:** stored in NVS (`Preferences`), written after 750 ms of idle as in v1. NVS is wear-levelled and suits small key-value data.
   - Namespace `turntable`, key `settings`, holding the `TurntableSettings` struct as a blob. Phase 2 stores rpm, dir, spinning, drive mode, max speed and acceleration (`MAGIC` "TTB2").
   - A load is rejected if the size or magic number doesn't match. Bump `MAGIC` when the struct layout changes, so old data is ignored rather than misread. Loaded values are clamped to the limits.
-  - Saves wait until the motor is idle, because flash writes pause the step timer. One exception: a spin started from rest is saved right away, before the motor starts, so it resumes after a power cycle as in v1.
+  - Saves wait until the motor is idle, because flash writes pause the step timer.
+  - `spinning` is runtime-only: it's cleared at load, so the disk always starts stopped after a power cut (decided 2026-10-21; v1 resumed the spin).
   - NVS sits outside the LittleFS partition, so firmware and web UI uploads both keep it.
 - **Presets:** stored in `/presets.json` on LittleFS, about 10 entries.
   - Uploading the web UI rewrites the whole LittleFS partition, so it would also erase the presets.

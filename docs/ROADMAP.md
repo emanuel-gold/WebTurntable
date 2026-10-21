@@ -13,10 +13,10 @@ _Last updated 2026-10-21._
   - **Phase 2 passed:** smooth start, stop and reversal; two devices showing live updates; quick nudges merging.
   - **Phase 2 problem:** positioning stops short. A 360° Rotate by ended about 2.3 mm short at the tape mark, and 3600° about 18.5 mm short. Both runs are short by a similar amount per revolution, and they ran at different speeds, so this looks like the steps-per-revolution constant rather than skipped steps. Assuming the tape sits at the disk's 50 mm radius, that's about 2.1° per revolution, so roughly 4100 half-steps per revolution instead of 4075.77. That's close to the 64:1 (2048 full steps) variant of the 28BYJ-48.
   - **Phase W passed:** setup from the iPhone, joining, reconnect after a power cycle, `turntable.local` on the phone and PC, the wrong-password path, the router-off fallback, Change Wi-Fi network, and access-point mode (controls load in the captive sheet, and a power cycle goes back to the home Wi-Fi).
-  - **Problem found (resume-on-power-up):** in access-point mode the user started a CW spin and cut the power. At power-up it spun again straight away, and nothing could stop it until it rejoined the home Wi-Fi (about 20 s or more). A saved spin resumes before any control page is reachable. Needs a decision: drop auto-resume, or make it an opt-in setting.
+  - **Problem found and fixed in code (resume-on-power-up):** in access-point mode the user started a CW spin and cut the power. At power-up it spun again straight away, and nothing could stop it until it rejoined the home Wi-Fi. The user decided a power loss must never restart a spin, so the disk now always starts stopped. Needs a firmware flash and a recheck.
   - **Still to test:** the reset button (D22 to GND at power-up) and max speed. See `todo_checks.md`.
 - **Next:**
-  - Decide on resume-on-power-up, and fix it.
+  - Flash the no-resume fix and recheck it.
   - Fix the steps-per-revolution constant (or add a calibration), then rerun the 10-revolution test.
   - Finish the remaining tests.
   - Then Phase 3.
@@ -183,7 +183,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-15 | BOOT-button flashing is accepted for now. Hands-free flashing (another DevKit, access holes) is revisited before the enclosure closes. |
 | 2026-10-15 | Phase 2 angles grow clockwise (positive = CW), like a compass. |
 | 2026-10-15 | Web commands are queued and run in `loop()`, so all settings and motion requests live on one thread. |
-| 2026-10-15 | Settings saves wait for the motor to be idle, because flash writes pause the step interrupt (`CONFIG_GPTIMER_ISR_IRAM_SAFE` is off in the core). A spin started from rest is saved first, so it still resumes after a power cycle as in v1. |
+| 2026-10-15 | Settings saves wait for the motor to be idle, because flash writes pause the step interrupt (`CONFIG_GPTIMER_ISR_IRAM_SAFE` is off in the core). (The exception that saved a spin from rest so it could resume was dropped on 2026-10-21.) |
 | 2026-10-15 | Rotate by builds on the last target in degrees, so repeated presses don't add up half-step rounding. |
 | 2026-10-15 | The mock server dropped the v1 protocol along with the v1 UI. |
 | 2026-10-15 | The firmware announces `turntable.local` over mDNS (ESPmDNS, part of the core), so phones can use a name. The IP address stays as the fallback for phones without mDNS. Adds about 36 KB of flash (53% total). |
@@ -198,6 +198,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-16 | If the saved network isn't found within 20 s at power-up, the turntable starts setup and keeps retrying the saved network. A Wi-Fi drop while running only reconnects, with no access point. |
 | 2026-10-16 | The saved network is only replaced when a new one connects, so a reset or an abandoned setup can't strand the turntable. |
 | 2026-10-16 | Setup is a small captive portal built on AsyncWebServer and the core's DNSServer, not WiFiManager (which needs the synchronous WebServer). |
+| 2026-10-21 | A power loss never restarts a spin: the disk always starts stopped (v1 resumed it). Found in testing, where a resumed spin couldn't be stopped until Wi-Fi reconnected. Speed and the other settings are still restored. |
 
 ## Open questions
 

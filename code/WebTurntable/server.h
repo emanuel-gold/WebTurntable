@@ -8,7 +8,7 @@ constexpr const char* WIFI_PASSWORD   = "";
 // mDNS hostname, so the UI is also at http://turntable.local
 constexpr const char* MDNS_HOSTNAME   = "turntable";
 
-// Initialize the webserver, load saved settings and resume a saved spin
+// Initialize the webserver and load saved settings. The disk always starts stopped.
 void initWebserver();
 
 // Run commands queued by the WebSocket handler

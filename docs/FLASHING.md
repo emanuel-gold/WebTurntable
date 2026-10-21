@@ -56,7 +56,7 @@ The turntable joins your home Wi-Fi like a smart plug. Your phone and PC stay on
 
 1. `tools\flash.cmd all`, then `tools\flash.cmd monitor`. Press the DevKit's **EN** button to restart it and see the whole boot log. The first time it should show `No saved Wi-Fi network: starting setup` and `Setup access point TURNTABLE started`. Once set up, it shows `Joined <your network> - http://turntable.local (<address>)`. The status LED stays lit.
 2. Do the [first-time Wi-Fi setup](#connecting-to-your-wi-fi), then open `http://turntable.local` on your phone and on the PC, both on your home Wi-Fi. Set a speed, and try CW, CCW and STOP. The dial follows the disk, and the log shows `Settings saved:` once the disk has stopped.
-3. Unplug USB, plug it back in, and reload the page. The speed and settings come back where you left them. If the disk was spinning when you unplugged, it starts spinning again.
+3. Unplug USB, plug it back in, and reload the page. The speed and settings come back where you left them. The disk stays stopped, even if it was spinning when you unplugged.
 
 ### Phase 2 hardware checks
 

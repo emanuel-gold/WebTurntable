@@ -312,11 +312,9 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
         }
     }
 
+    // Spinning is runtime-only, like the firmware: it isn't saved, so it needs no save.
     function stopSpinning() {
-        if (settings.spinning) {
-            settings.spinning = false;
-            queueSettingsSave();
-        }
+        settings.spinning = false;
     }
 
     // Run one command, the same way executeCommand() in server.cpp does.
@@ -336,12 +334,7 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
                 }
                 settings.dir = command.dir;
                 settings.spinning = true;
-                if (state === 'idle') {
-                    settingsDirty = true;
-                    trySave();
-                } else {
-                    queueSettingsSave();
-                }
+                queueSettingsSave();
                 motionRun(settings.rpm, settings.dir);
                 break;
             case 'stop':
