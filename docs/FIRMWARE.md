@@ -38,7 +38,7 @@ arduino-cli compile --profile esp32 code/WebTurntable
 - Arduino IDE 2 ignores profiles, so v2 is built and flashed with arduino-cli only ([FLASHING.md](FLASHING.md)). Building from the IDE would mean installing the same versions there as well, another ~6.5 GB.
 - To bump a version, edit `sketch.yaml`, compile-check, and update the table above in the same commit.
 
-**Size baseline.** A test sketch using Wi-Fi AP, AsyncWebServer with a WebSocket, ArduinoJson, LittleFS, Preferences and a GPTimer compiles to 994 KB of flash (50% of the 1.875 MB app slot) and 46.6 KB of static RAM (14%). The BLE stack in Phase 4 comes on top of that. On the default partition scheme, this baseline alone would already use 76% of the app slot. The Phase 2 firmware (motion engine, protocol v2, mDNS) is 1,052 KB (53%) with 48.9 KB of static RAM, and compiles without warnings under `--warnings all`.
+**Size baseline.** A test sketch using Wi-Fi AP, AsyncWebServer with a WebSocket, ArduinoJson, LittleFS, Preferences and a GPTimer compiles to 994 KB of flash (50% of the 1.875 MB app slot) and 46.6 KB of static RAM (14%). The BLE stack in Phase 4 comes on top of that. On the default partition scheme, this baseline alone would already use 76% of the app slot. The Phase 2 firmware (motion engine, protocol v2, mDNS) is 1,052 KB (53%) with 48.9 KB of static RAM. Phase 3 (sequencer, presets) brings it to 1,093 KB (55%) with 50.4 KB, and it compiles without warnings under `--warnings all`.
 
 ## Modules
 
@@ -47,10 +47,10 @@ arduino-cli compile --profile esp32 code/WebTurntable
 | `WebTurntable.ino` | `setup()`/`loop()`: initialize modules, run the sequencer and storage ticks |
 | `config.h` | Pins, motor constants, limits |
 | `motion.{h,cpp}` | Step generation, position, acceleration; run/move/stop API |
-| `sequencer.{h,cpp}` | Jobs: spin with a stop condition, sweep, photo capture, video capture |
-| `shutter.{h,cpp}` | BLE HID shutter: advertising, connection state, `press()` |
-| `storage.{h,cpp}` | Last-used state (debounced) and presets |
-| `server.{h,cpp}` | HTTP, WebSocket protocol, state broadcast, settings persistence |
+| `sequencer.{h,cpp}` | Everything that starts motion from `loop()`: moves, spin with a stop condition, sweep. Photo and video capture join in Phase 4. |
+| `presets.{h,cpp}` | Presets, in NVS |
+| `shutter.{h,cpp}` | BLE HID shutter: advertising, connection state, `press()` (Phase 4) |
+| `server.{h,cpp}` | HTTP, WebSocket protocol, state broadcast, settings persistence (last-used state, debounced) |
 | `wireless.{h,cpp}` | Wi-Fi: joining the saved network, the setup access point and captive page, mDNS, reset button |
 | `data/` | Web UI |
 
@@ -86,7 +86,7 @@ void motionRun(float rpm, Direction dir);           // continuous; ramps to spee
 void motionMoveTo(int32_t position, float rpm);     // half-steps from the session zero
 void motionStop();                                  // ramp down
 void motionHalt();                                  // immediate stop, coils off
-void motionSetZero();
+int32_t motionSetZero();                            // returns how far zero moved
 void motionSetDriveMode(DriveMode mode);
 void motionSetAcceleration(float rpmPerSecond);
 MotionStatus motionStatus();                        // state, position, angle, speed
@@ -94,7 +94,7 @@ MotionStatus motionStatus();                        // state, position, angle, s
 
 Requests are queued under a spinlock and picked up on the next control tick (at most 1 ms later).
 
-**Moves in degrees.** `server.cpp` turns degrees into half-step targets. It keeps the last target in degrees and builds the next Rotate by on it while the move is unfinished, or while the disk still sits on that target. That way 24 presses of +15° land back on the starting angle, instead of piling up 0.18 half-steps of rounding per press. Go to angle measures from the current position (shortest way, CW or CCW).
+**Moves in degrees.** `sequencer.cpp` turns degrees into half-step targets. It keeps the last target in degrees and builds the next Rotate by on it while the move is unfinished, or while the disk still sits on that target. That way 24 presses of +15° land back on the starting angle, instead of piling up 0.18 half-steps of rounding per press. Go to angle measures from the current position (shortest way, CW or CCW).
 
 **Idle.** The coils switch off when the motor stops, as in v1, so the motor stays cool. If the disk drifts during capture settle times, add an optional hold.
 
@@ -141,11 +141,26 @@ The HTTP handlers run in the AsyncTCP task. They only read a snapshot and post r
 | Job | Parameters | Ends when |
 |---|---|---|
 | Spin | RPM, direction, optional stop after N revolutions or T minutes | Stop condition met, or STOP |
-| Sweep | Range° (or angles A and B), RPM, dwell (ms), cycles or T minutes | Cycles or time done, or STOP |
-| Photo capture | Shots (or step°), direction, settle (ms), after-shot wait (ms), shutter on/off, return to start | All shots taken |
-| Video capture | Motion (one revolution at a set RPM, a sweep, or a timed spin), lead-in (ms), lead-out (ms) | Motion done |
+| Sweep | Angles From and To, RPM, dwell (ms), N cycles or T minutes | Cycles or time done, or STOP |
+| Photo capture (Phase 4) | Shots (or step°), direction, settle (ms), after-shot wait (ms), shutter on/off, return to start | All shots taken |
+| Video capture (Phase 4) | Motion (one revolution at a set RPM, a sweep, or a timed spin), lead-in (ms), lead-out (ms) | Motion done |
 
 The photo capture loop is: move one step angle, wait the settle time, press the shutter, wait the after-shot time, repeat. Capture jobs can be paused and resumed. STOP from the UI always halts motion and cancels the running job.
+
+**Implemented in Phase 3** (`sequencer.cpp`). `handleSequencer()` runs in `loop()` right after the commands, and drives the motion engine through its public API only. A new job, a move or STOP replaces whatever was running. Plain moves (Rotate by, Go to) go through the sequencer as well, though they don't count as jobs in the state.
+
+- **Spin with a revolution count:** a move to the starting position plus N turns, so it ramps into the last turn and lands back on its starting angle. Fractions are fine: 1.5 turns lands opposite.
+- **Spin with a time limit:** a plain spin that ramps down once the time is up.
+- **Sweep:**
+  - It goes the short way to the copy of From nearest the disk, and the other end is To − From beyond that. The ends are fixed half-step targets, so cycles don't drift.
+  - Then it travels to To and back, dwelling at each end with the coils off. Coming back to From completes a cycle, so a counted sweep ends on From.
+  - Once the time limit is up, the sweep stops at the next end it reaches: at once if it's dwelling, otherwise at the end of the current leg.
+- **Speed changes** apply live: a spin is re-requested at the new speed, and a move, counted spin or sweep leg re-requests the same target at the new speed. During a dwell, the next leg picks up the new speed.
+- **Set zero during a job:** `motionSetZero()` returns how far zero moved, and the sequencer shifts its targets by that much, so a running job keeps going to the same physical places.
+- **Limits** (`config.h`):
+  - Revolution counts 0.1–1000, times 0.1–600 minutes, cycles 1–1000.
+  - Sweep angles ±3600°, dwell 0–60 s.
+  - From and To have to land on different half-steps.
 
 ## Shutter (BLE HID)
 
@@ -174,59 +189,87 @@ One endpoint, `/ws`, carrying JSON text frames. Each client-to-device command ha
 
 - Speeds are clamped to 0.5 RPM–max speed, max speed to 0.5–20, and acceleration to 1–200.
 - Lowering the max speed below the speed setting pulls the setting down with it.
-- Moves run at the speed setting, and a move ends a spin.
+- Moves run at the speed setting, and a move ends a spin. A speed change applies to whatever is running, moves included (Phase 3).
+
+**Added in Phase 3:**
+
+```json
+{"cmd":"spinOptions","stopAfter":"revs","stopValue":3}           // any subset; stopAfter: never, revs or minutes
+{"cmd":"sweepOptions","fromDeg":-30,"toDeg":30,"dwellMs":500,"stopAfter":"cycles","stopValue":4}
+                                                                  // any subset; stopAfter: never, cycles or minutes
+{"cmd":"sweep"}                                                   // start a sweep; takes rpm and any sweepOptions fields
+{"cmd":"presetSave","name":"Front sweep","mode":"sweep"}          // speed + that mode's options; a taken name is replaced
+{"cmd":"presetApply","id":3}                                      // loads them; doesn't start anything
+{"cmd":"presetDelete","id":3}
+```
+
+- `run` also takes the `spinOptions` fields.
+- The options are settings: they're kept, saved, and broadcast in the state, and a start command uses them. The UI sends each field as it changes, and sends them all again with Start and Save.
+- `stopValue` keeps its number when `stopAfter` is `never`, so switching a limit back on brings the last value back.
+- Preset names are 1–63 bytes of UTF-8. The UI allows 24 characters.
+- Errors found when a command runs (From equal to To, all 10 presets used, a preset that's gone) go to the client that sent it, after the state broadcast.
 
 ```json
 {"type":"state","motion":"moving","angle":120.3,"speed":-4.87,"rpm":5.00,"dir":"cw","spinning":false,
+ "job":{"type":"sweep","cycle":2,"cycles":4},
+ "spin":{"stopAfter":"never","stopValue":1.00},
+ "sweep":{"fromDeg":-30.0,"toDeg":30.0,"dwellMs":500,"stopAfter":"cycles","stopValue":4.00},
  "settings":{"driveMode":"half","maxRpm":20.0,"accel":20.0},
  "wifi":{"mode":"lan","ssid":"Home","ip":"192.168.1.42","rssi":-58},
- "limits":{"minRpm":0.5,"maxRpm":20,"minAccel":1,"maxAccel":200}}
+ "limits":{"minRpm":0.5,"maxRpm":20,"minAccel":1,"maxAccel":200,"minRevs":0.1,"maxRevs":1000,
+           "minMinutes":0.1,"maxMinutes":600,"maxCycles":1000,"maxSweepDeg":3600,"maxDwellMs":60000}}
+{"type":"presets","presets":[
+  {"id":0,"name":"Two slow turns","mode":"spin","rpm":3.00,"stopAfter":"revs","stopValue":2.00},
+  {"id":1,"name":"Front sweep","mode":"sweep","rpm":8.00,"fromDeg":-30.0,"toDeg":30.0,"dwellMs":500,"stopAfter":"cycles","stopValue":4.00}]}
 {"type":"error","msg":"run needs dir cw or ccw"}
 ```
 
 - `motion` is `idle`, `running`, `moving` or `stopping`.
 - `speed` is the current speed, signed (positive clockwise).
-- `rpm` and `dir` are the spin settings, and `spinning` says whether a spin is on.
+- `rpm` and `dir` are the spin settings, and `spinning` says whether a spin job is on.
+- `job` is `null`, or the running spin or sweep:
+  - A spin with a count adds `revsLeft`.
+  - A sweep adds `cycle` (from 1), plus `cycles` with a count.
+  - Either adds `secondsLeft` with a time limit. At 0, a sweep is finishing its last leg.
+- The state is broadcast 10 times a second while the disk moves or a job runs, so it continues through a sweep's dwell.
+- A new client gets the state, then the presets. The presets go to everyone after each save or delete.
 - Errors go only to the client that sent the bad command.
 
 **Planned for later phases** (draft):
 
 ```json
-{"cmd":"sweep","rangeDeg":90,"rpm":3,"dwellMs":500,"cycles":4}
 {"cmd":"capture","type":"photo","shots":36,"settleMs":800,"afterMs":500,"dir":"cw"}
 {"cmd":"capturePause"}
 {"cmd":"captureResume"}
 {"cmd":"captureCancel"}
 {"cmd":"shutterTest"}
-{"cmd":"presetSave","name":"Product 36"}
-{"cmd":"presetApply","id":3}
-{"cmd":"presetDelete","id":3}
 ```
 
-These will add `job`, `progress` and `shutter` fields to the state, and a `{"type":"presets"}` message.
+These will add capture jobs to `job`, and a `shutter` field to the state.
 
 Directions are strings rather than enum numbers, which removes the v1 CW/OFF/CCW mismatch.
 
 ## Persistence
 
 - **Last-used state:** stored in NVS (`Preferences`), written after 750 ms of idle as in v1. NVS is wear-levelled and suits small key-value data.
-  - Namespace `turntable`, key `settings`, holding the `TurntableSettings` struct as a blob. Phase 2 stores rpm, dir, spinning, drive mode, max speed and acceleration (`MAGIC` "TTB2").
+  - Namespace `turntable`, key `settings`, holding the `TurntableSettings` struct as a blob: rpm, dir, drive mode, max speed, acceleration, and the spin and sweep options (`MAGIC` "TTB3", Phase 3; Phase 2's "TTB2" also held `spinning`).
   - A load is rejected if the size or magic number doesn't match. Bump `MAGIC` when the struct layout changes, so old data is ignored rather than misread. Loaded values are clamped to the limits.
-  - Flash writes pause the step timer for a moment, so saves wait while the disk moves to a target, where every step counts. A spin is saved as it runs (decided 2026-10-21): a brief hitch there only nudges the dial, and it means a speed change mid-spin survives a power cut.
-  - `spinning` is runtime-only: it's cleared at load, so the disk always starts stopped after a power cut (decided 2026-10-21; v1 resumed the spin).
+  - Flash writes pause the step timer for a moment, so saves wait while the disk moves to a target, where every step counts. That includes counted spins and sweep legs; a sweep's dwell counts as idle. A spin is saved as it runs (decided 2026-10-21): a brief hitch there only nudges the dial, and it means a speed change mid-spin survives a power cut.
+  - Running jobs aren't saved, so the disk always starts stopped after a power cut (decided 2026-10-21; v1 resumed the spin).
   - NVS sits outside the LittleFS partition, so firmware and web UI uploads both keep it.
-- **Presets:** stored in `/presets.json` on LittleFS, about 10 entries.
-  - Uploading the web UI rewrites the whole LittleFS partition, so it would also erase the presets.
-  - Decide in Phase 3: keep presets in NVS instead (it survives both firmware and web UI uploads), or accept the loss and document it.
+- **Presets** (Phase 3, `presets.cpp`): in NVS too, so both uploads keep them (decided 2026-10-21, instead of `/presets.json` on LittleFS, which a web UI upload would erase).
+  - Namespace `presets`, keys `p0` to `p9`, one `Preset` struct per slot with its own magic number ("PRS1"). A slot that fails to load is skipped. Loaded values are clamped like settings.
+  - Kept in RAM, and written (or removed) under the same rule as settings, but without the debounce. Changing Wi-Fi saves them first, since it restarts.
 - **Angle and zero:** not persisted (see [Angle control without homing](ROADMAP.md#angle-control-without-homing)).
 
 ## Web UI
 
 - Vanilla HTML/CSS/JS with no build step and no CDN; the phone has no internet while it is on the turntable's AP.
-- **Header:** live angle dial, connection status, shutter status.
-- **Controls:** an always-visible STOP and tabs for Spin, Sweep and Capture.
+- **Header:** live angle dial, connection status, shutter status (Phase 4). Under the angle, what's left of the running job.
+- **Controls:** an always-visible STOP, and a Motion card with tabs for Spin and Sweep (Capture comes in Phase 4) under one speed slider. A job started from any phone brings its tab forward. The open tab is remembered per browser.
 - **Position tools:** Set zero, ±15/45/90° buttons, Go to angle.
-- **Presets** list, plus advanced settings: drive mode, acceleration, max speed, shutter key.
+- **Presets** card: tap to load (switching to its tab; nothing moves until Start), two taps to delete, and Save for the open tab.
+- **Settings:** drive mode, acceleration, max speed, Wi-Fi, and later the shutter key.
 - Speed controls show both RPM and seconds per revolution.
 - The page reconnects automatically (as in v1) and reflects changes made from other clients.
 

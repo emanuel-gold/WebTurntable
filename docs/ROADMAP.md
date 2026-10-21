@@ -13,8 +13,12 @@ _Last updated 2026-10-21._
     - Calibrated to the 64:1 motor (4096 half-steps per revolution). A 3600° test now lands on the mark.
     - Speed is capped at 20 RPM. Spins don't resume after a power loss, and CW/CCW are press-to-toggle.
   - **Phase W (Wi-Fi):** home Wi-Fi with captive-portal setup, an access-point fallback, Change Wi-Fi network, and the reset button on GPIO 4.
-- **Known limitation:** the motor shaft has a little play, so a reversal (for example +360 then −360) misses by that much. Backlash compensation was drafted but deferred to the backlog (2026-10-21).
-- **Next:** Phase 3 (modes, timer, presets). Phase E (enclosure) can run alongside.
+- **Phase 3 (modes, timer, presets): built, waiting on the hardware test.** Compile-checked without warnings and covered by the mock server's tests (30 passing), with the UI checked in a browser at phone width.
+  - Sweeps between two angles from zero, spins and sweeps that stop after a count or a time, and 10 presets in NVS.
+  - Speed changes now apply live to moves too (moved up from the backlog).
+  - The settings layout changed (`TTB3`), so saved settings reset to defaults once after this flash.
+- **Known limitation:** the motor shaft has a little play, so a reversal (for example +360 then −360) misses by that much. Backlash compensation was drafted but deferred to the backlog (2026-10-21). Sweeps reverse every leg, so they show it too.
+- **Next:** the [Phase 3 hardware checks](FLASHING.md#phase-3-hardware-checks), then Phase 4 (Bluetooth shutter). Phase E (enclosure) can run alongside.
 - **Deferred:** the BOOT-button question (open question 2), at the user's call. Phase E needs open question 1.
 - **Working style:**
   - Work on main. v1 stays reproducible at tag `v1-esp8266`.
@@ -105,10 +109,17 @@ Joining the user's network like a smart home device, instead of always being an 
 
 ## Phase 3: Modes, timer, presets
 
-- [ ] Back-and-forth (sweep): range or two end angles, speed, dwell at the ends, cycle count.
-- [ ] Stop conditions for spin and sweep: after N revolutions or cycles, or after T minutes. The UI shows what remains.
-- [ ] Presets: save the current mode and parameters under a name, then apply or delete it (about 10 slots). Store them somewhere a web UI upload doesn't erase ([FIRMWARE.md](FIRMWARE.md#persistence)).
-- [ ] Persist the last-used state for the new modes and parameters, extending Phase 1's debounced NVS store.
+- [x] Back-and-forth (sweep): two end angles from zero, speed, dwell at the ends, cycle count. It goes to From first, and one cycle is From → To → From.
+- [x] Stop conditions for spin and sweep: after N revolutions or cycles, or after T minutes. The UI shows what remains.
+  - A spin with a revolution count lands back on its starting angle. A timed sweep stops at the next end it reaches.
+- [x] Presets: save the current mode and parameters under a name, then load or delete it (10 slots). They're kept in NVS, so web UI and firmware uploads don't erase them ([FIRMWARE.md](FIRMWARE.md#persistence)).
+- [x] Persist the last-used state for the new modes and parameters, extending Phase 1's debounced NVS store (`MAGIC` "TTB3").
+- [x] Also done in this phase:
+  - Speed changes apply live to moves, counted spins and sweeps (from the backlog).
+  - The moves moved from `server.cpp` to the new `sequencer.cpp`, unchanged.
+  - Errors found when a command runs now reach the phone that sent it.
+  - Rotate by accepts a minus sign on the iPhone (its decimal keypad has none).
+- [ ] Hardware test by the user ([Phase 3 hardware checks](FLASHING.md#phase-3-hardware-checks)).
 
 **Done when:** a saved preset still reproduces the same motion after a reboot.
 
@@ -143,8 +154,6 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 
 ## Backlog (deferred)
 
-- adjust RPM in real time  while the motor is moving
-  - Confirmed 2026-10-21: spins (CW/CCW buttons) follow the slider live, but moves (±15/45/90, Rotate by, Go to) keep the speed they started with. The fix is small: on a `speed` command during a move, re-request the same target at the new speed.
 - **Backlash compensation** for the play in the motor shaft (wishlist, deferred 2026-10-21). A reversal, such as +360 then −360, misses by the amount of play. The user confirmed it's in the motor shaft, not the printed disk.
   - Approach, drafted and then shelved: after each change of direction, the step ISR takes up a set number of half-steps that turn the rotor but don't count toward the position.
   - The amount would be a "Backlash (°)" setting, calibrated by Set zero, Rotate by 90, then −90, raising it until the disk lands on the mark. It adds one float to the saved settings, which means a `MAGIC` bump.
@@ -208,6 +217,14 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-21 | The settings inputs (max speed, acceleration) clamp to the firmware's limits in the page, and say so, instead of accepting a value that the firmware quietly clamps. |
 | 2026-10-21 | Backlash compensation deferred to the backlog; the small reversal error from shaft play is acceptable for now. |
 | 2026-10-21 | Phases 2 and W closed after the hardware checks passed. |
+| 2026-10-21 | A sweep is set by two angles from zero, From and To (negative is counter-clockwise of zero). It goes to the nearest copy of From the short way, then From → To → From is one cycle, and it ends on From. To sweep around the current spot, press Set zero here first. The values are literal: 330 to 30 is a 300° counter-clockwise sweep, which the UI's summary line spells out. (The user chose this over a width around the current spot.) |
+| 2026-10-21 | Tapping a preset loads it and switches to its tab; nothing moves until Start (the user's choice over running it straight away). So a spin preset has no direction: it comes from the CW or CCW button. |
+| 2026-10-21 | A preset holds the mode, the speed and that mode's options. Drive mode, acceleration and max speed stay global settings that presets don't touch. |
+| 2026-10-21 | Presets live in NVS (namespace `presets`, one key per slot, 10 slots), not `/presets.json` on LittleFS, so web UI uploads keep them. Saving under a name that's taken replaces that preset. Writes wait under the same rule as settings, because flash writes pause stepping. |
+| 2026-10-21 | A spin with a revolution count is a move to the start plus N turns, so it ramps into the last turn and lands on its starting angle. A timed spin ramps down when time is up. A timed sweep stops at the next end it reaches, rather than mid-leg. |
+| 2026-10-21 | One speed setting serves spins, sweeps and moves. Spin and sweep options are device settings sent as they change, like speed, so every phone shows them and they're saved. Start commands carry them too. |
+| 2026-10-21 | Live speed changes during moves (a backlog item) were done in Phase 3, because counted spins and sweeps are moves. |
+| 2026-10-21 | The settings struct is now `TTB3`. Settings saved by Phase 2 firmware are ignored, so they reset to defaults once. A migration wasn't worth it for one device. |
 
 ## Open questions
 

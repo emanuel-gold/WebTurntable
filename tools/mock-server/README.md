@@ -27,7 +27,8 @@ The log mirrors the firmware's serial output (connects, commands, and `Settings 
 
 ## Protocols
 
-- **`v2`** (`protocol-v2.js`) emulates the [v2 protocol](../../docs/FIRMWARE.md#websocket-protocol-v2). It parses and validates commands the way `server.cpp` does, and simulates the motion engine with the same ramp, braking and move-target logic as `motion.cpp`, ticking every 10 ms. It broadcasts state after each command and 10 times a second while the disk moves, and logs `Settings saved` once the disk is idle, as the firmware does.
+- **`v2`** (`protocol-v2.js`) emulates the [v2 protocol](../../docs/FIRMWARE.md#websocket-protocol-v2). It parses and validates commands the way `server.cpp` does, and simulates the motion engine with the same ramp, braking and move-target logic as `motion.cpp`, ticking every 10 ms. It broadcasts state after each command and 10 times a second while the disk moves or a job runs, and logs `Settings saved` once the disk is idle, as the firmware does.
+- **Jobs and presets** (Phase 3) follow `sequencer.cpp` and `presets.cpp`: spins with a stop condition, sweeps, live speed changes, and the presets messages. Presets are kept in memory until the mock stops. Timed jobs use real time, so the shortest one (0.1 minutes) takes 6 s.
 - **Wi-Fi setup** is emulated in `protocol-v2.js` as well, with the routes `wireless.cpp` adds: `/setup`, `/api/wifi/status`, `scan`, `join` and `ap`. It also emulates the `wifi` field in the state and the `wifiSetup` command, which "restarts" by dropping the WebSockets.
   - Timings are shortened: the scan takes 1.5 s, a join 2 s, and the joined grace period 5 s.
   - The password `wrongpassword` fails, so the error path can be tried.

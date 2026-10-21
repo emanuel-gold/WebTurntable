@@ -27,7 +27,8 @@ Run every command from the repo folder, in PowerShell, Command Prompt or Git Bas
 
 - **Port:** picked automatically when exactly one USB serial device is plugged in. Bluetooth and built-in COM ports are never picked. Otherwise add the port, for example `tools\flash.cmd all -Port COM7`.
 - **Dry run:** add `-WhatIf` to compile and build the web UI image without writing anything to the board.
-- **Web UI uploads replace the whole file system.** Anything the firmware stores there (presets, from Phase 3) is erased. Settings kept in NVS survive.
+- **Web UI uploads replace the whole file system**, but nothing you set is stored there. Settings, presets and the saved Wi-Fi network live in NVS, so firmware and web UI uploads both keep them.
+- **After a firmware update that changes the settings layout,** saved settings go back to defaults once (speed 5 RPM, acceleration 20, max speed 20, half-step). The log then says `Saved settings are from another version, using defaults`. The Phase 3 update does this.
 
 When `all` finishes, a turntable with no saved network starts Wi-Fi setup. See [Connecting to your Wi-Fi](#connecting-to-your-wi-fi).
 
@@ -68,6 +69,24 @@ Put a piece of tape on the disk and a mark on the body next to it, so you can se
 4. **Max speed:** the firmware caps speed at 20 RPM. Spin at 20 in both half-step and full-step, watching for buzzing, stalling, or the tape drifting off the mark after a Rotate by 360. Measured 2026-10-21: half-step was clean up to 25, full-step stalled at 25, and both stalled at 30.
 5. **Two phones:** open the page on two phones (or a phone and the PC). Moves made on one should show live on the other's dial.
 6. **Quick nudges:** press +15° several times quickly. The moves should add up into one smooth motion, and land exactly on a multiple of 15°.
+
+### Phase 3 hardware checks
+
+Flash both parts with `tools\flash.cmd all`, since the firmware and the web UI both changed. Keep the tape mark from Phase 2. Settings reset to defaults once after this update (see [Flashing](#flashing)).
+
+1. **Counted spin:** press **Set zero here**. On the Spin tab, set Run to `2` `revolutions`, then press CW. Under the angle it counts down the revolutions left. It should slow down into the last turn and stop on the mark, reading `0.0°`.
+2. **Timed spin:** set Run to `0.5` `minutes` and press CCW. It counts down from `0:30`, then ramps to a stop.
+3. **Speed during a move:** set the speed to 3 RPM, Rotate by `360`, and drag the slider to 15 while it turns. It should speed up, then still stop on the mark. (Before Phase 3, moves kept the speed they started with.)
+4. **Sweep:** on the Sweep tab, set From `-30` to `30`, a 1 s pause, and Run `3` `cycles`, then press **Start sweep**. It goes to −30° first, then swings to 30° and back, pausing at each end, and shows "Cycle 1 of 3". It ends on −30° (330.0° on the dial), and **Stop sweep** turns back into **Start sweep**. Watch for buzzing or missed steps at the reversals.
+5. **Typing angles on the iPhone:** in From and in Rotate by, check the keyboard has a minus sign.
+6. **Presets survive a reboot** (the roadmap's "done when"):
+   1. Save the sweep from step 4 as `Front sweep`. Then on the Spin tab, set 6 RPM and Run `1` `revolutions`, and save that as `One turn`.
+   2. Change the speed and the sweep angles to something else.
+   3. Unplug USB, plug it back in, and reload the page. Both presets are still listed.
+   4. Tap `Front sweep`. The Sweep tab opens with the saved angles and speed, and nothing moves until you press **Start sweep**. Start it: it should repeat step 4's motion.
+   5. Tap `One turn`, then press CW: one turn at 6 RPM, back to where it started.
+7. **Two phones:** with the page open on two phones, start a sweep on one. The other switches to the Sweep tab and shows the same cycle count. A preset saved on one shows up on the other.
+8. **Web UI upload keeps presets:** run `tools\flash.cmd webui`, reload, and check the presets are still there.
 
 ## Troubleshooting
 

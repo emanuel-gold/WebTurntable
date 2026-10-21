@@ -13,7 +13,7 @@ Push to `origin` only when the user asks. Never push or open PRs against `upstre
 
 Work directly on main (renamed from master); there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
 
-**Current state:** Phases 0, 1, 2 and W are done and confirmed on hardware: the ESP32 port, the motion engine with protocol v2 and the new UI, and home Wi-Fi with captive-portal setup. Next is Phase 3 (modes, timer, presets).
+**Current state:** Phases 0, 1, 2 and W are done and confirmed on hardware: the ESP32 port, the motion engine with protocol v2 and the new UI, and home Wi-Fi with captive-portal setup. Phase 3 (sweeps, stop conditions, presets) is built and waiting on the user's hardware test. After that comes Phase 4 (Bluetooth shutter).
 
 **In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
 
@@ -32,9 +32,11 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
   - `WebTurntable.ino`: `setup()` and `loop()`.
   - `config.h`: pins, motor constants, and speed and acceleration limits.
   - `motion.{h,cpp}`: the motion engine. A GPTimer ISR steps the coils through the GPIO registers, and a 1 kHz ramp task on core 1 sets its interval. Position is in half-steps, positive clockwise. See [FIRMWARE.md](docs/FIRMWARE.md#motion-engine).
+  - `sequencer.{h,cpp}`: everything that starts motion from `loop()`. It runs moves (Rotate by, Go to), spins with a stop condition, and sweeps, and applies speed changes live. See [FIRMWARE.md](docs/FIRMWARE.md#sequencer-jobs).
+  - `presets.{h,cpp}`: 10 presets in NVS namespace `presets`, so uploads keep them.
   - `server.{h,cpp}`: AsyncWebServer with the WebSocket at `/ws` (protocol v2), and settings persistence (NVS via `Preferences`).
-    - The AsyncTCP task only parses and validates JSON. Commands are queued and run in `loop()`, so settings are single-threaded.
-    - Flash writes pause the step interrupt, so saves wait while a move runs. Spins are saved as they run.
+    - The AsyncTCP task only parses and validates JSON. Commands are queued and run in `loop()`, so settings and presets are single-threaded. Errors found while running a command go back to its sender by client id.
+    - Flash writes pause the step interrupt, so settings and preset saves wait while a move, counted spin or sweep leg runs. Spins and a sweep's dwell allow them.
   - `wireless.{h,cpp}`: the Wi-Fi state machine. It joins the saved network, or starts the setup access point with captive DNS. It also runs the setup page's `/api/wifi/*`, mDNS, and the reset button on GPIO 4. See [FIRMWARE.md](docs/FIRMWARE.md#wi-fi-and-setup-phase-w-wirelesscpp).
   - `data/`: the web UI served from LittleFS: the control page (`index.html`, `script.js`), the Wi-Fi setup page (`setup.html`, `setup.js`), and the shared `style.css` and `favicon.png`. Vanilla JS, no build step.
   - `sketch.yaml`: arduino-cli build profile `esp32` that pins the v2 core and library versions.
