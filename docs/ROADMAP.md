@@ -15,7 +15,10 @@ _Last updated 2026-10-21._
   - **Phase W (Wi-Fi):** home Wi-Fi with captive-portal setup, an access-point fallback, Change Wi-Fi network, and the reset button on GPIO 4.
   - **Phase 3 (modes, timer, presets):** sweeps between two angles from zero, spins and sweeps that stop after a count or a time, and 10 presets in NVS that survive reboots and uploads. Speed changes apply live to moves too.
 - **Known limitation:** the motor shaft has a little play, so a reversal (for example +360 then −360) misses by that much. Backlash compensation was drafted but deferred to the backlog (2026-10-21). Sweeps reverse every leg, but the Phase 3 checks found no problem there.
-- **Next:** Phase 4 (Bluetooth shutter), starting with the BLE HID library spike. Phase E (enclosure) can run alongside.
+- **Phase 4 (Bluetooth shutter and capture): built, waiting on the hardware test.** Compile-checked without warnings and covered by the mock server's tests (37 passing), with the UI checked in a browser at phone width.
+  - Spike: NimBLE-Arduino 2.5.1 builds against core 3.3.12. The firmware is now 68% of the app slot (NimBLE adds about 253 KB). Pairing with the iPhone, Wi-Fi coexistence and free heap are still to be checked on the device.
+  - Photo and video captures, a Bluetooth remote that presses Volume Up, and presets for captures. Phase 3 presets and settings carry over.
+- **Next:** the [Phase 4 hardware checks](FLASHING.md#phase-4-hardware-checks), then Phase E (enclosure), which needs open question 1. Phase 5 (Wi-Fi updates) comes after the MVP.
 - **Deferred:** the BOOT-button question (open question 2), at the user's call. Phase E needs open question 1.
 - **Working style:**
   - Work on main. v1 stays reproducible at tag `v1-esp8266`.
@@ -122,10 +125,18 @@ Joining the user's network like a smart home device, instead of always being an 
 
 ## Phase 4: Bluetooth shutter and capture
 
-- [ ] Spike: pick a BLE HID library that works with arduino-esp32 3.x alongside the Wi-Fi AP and AsyncWebServer. Check flash and RAM fit, and test pairing with the iPhone 16 and its default Camera app.
-- [ ] Shutter: the device advertises as a BLE keyboard and sends Volume Up (key configurable). The UI shows paired/connected state and has a **Test shutter** button.
-- [ ] Photo capture: shots per revolution (or a step angle), settle delay before each shot, wait after each shot, direction, and return to start. The UI shows progress and estimated total time, with pause and cancel.
-- [ ] Video capture: shutter press, then the motion (one revolution, a sweep, or a timed spin), then a second press. Lead-in and lead-out delays.
+- [x] Spike: pick a BLE HID library that works with arduino-esp32 3.x alongside the Wi-Fi AP and AsyncWebServer. Check flash and RAM fit, and test pairing with the iPhone 16 and its default Camera app.
+  - NimBLE-Arduino 2.5.1, pinned in `sketch.yaml`. It builds against core 3.3.12 without warnings, and takes the firmware to 1,356 KB (68% of the app slot) and 60.7 KB of static RAM.
+  - Pairing, the Camera app and free heap move to the hardware test, which needs the board.
+- [x] Shutter: the device advertises as a BLE remote, "Turntable Shutter", and sends Volume Up (or Volume Down). The UI shows paired/connected state and has a **Test shutter** button.
+  - Consumer-control keys only, not a keyboard, so the iPhone keeps its on-screen keyboard.
+  - Also an on/off switch and Forget paired phones.
+- [x] Photo capture: shots and a step angle (typing shots fills in the step for a full turn), settle delay before each shot, wait after each shot, direction, and return to start. The UI shows progress and estimated total time, with pause; STOP cancels.
+  - A start delay to open the Camera app, and a dry run without the shutter.
+  - It pauses itself if the phone isn't there for a shot.
+- [x] Video capture: shutter press, then the motion (the Spin or Sweep options: turns, a timed spin, or a sweep), then a second press. Lead-in and lead-out delays, and a start delay. STOP during the recording also stops the recording.
+- [x] Also done in this phase: presets save photo and video setups (Phase 3 presets are converted on load), and the capture settings are saved without resetting the Phase 3 ones.
+- [ ] Hardware test by the user ([Phase 4 hardware checks](FLASHING.md#phase-4-hardware-checks)).
 
 **Done when:** a 36-shot capture runs unattended and leaves 36 photos on the phone, and a one-revolution video starts and stops on its own.
 
@@ -223,6 +234,14 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-21 | Live speed changes during moves (a backlog item) were done in Phase 3, because counted spins and sweeps are moves. |
 | 2026-10-21 | The settings struct is now `TTB3`. Settings saved by Phase 2 firmware are ignored, so they reset to defaults once. A migration wasn't worth it for one device. |
 | 2026-10-21 | Phase 3 closed after the hardware checks passed. |
+| 2026-10-21 | Phase 4 spike: NimBLE-Arduino 2.5.1 for the shutter. It builds cleanly against core 3.3.12, and NimBLE costs about 253 KB of flash (68% of the app slot in all). The core's Bluedroid-based library wasn't tried, being the larger stack. |
+| 2026-10-21 | The shutter is a consumer-control remote (Volume Up/Down), not a keyboard. iOS hides the on-screen keyboard while a Bluetooth keyboard is connected, and the same iPhone types in the web UI. A press lasts 60 ms, so the Camera app doesn't start QuickTake. |
+| 2026-10-21 | Presets cover all four modes, Spin, Sweep, Photo and Video (the user's choice). A video preset keeps the spin or sweep it records. Phase 3 presets are converted on load rather than dropped. |
+| 2026-10-21 | Photo shots are set by a count and a step, linked: typing the count fills in 360°/count, and changing the step covers part of a turn (the user's choice over a full turn only). |
+| 2026-10-21 | STOP during a video that's recording sends one more shutter press, so the camera stops recording (the user's choice). STOP before the recording starts sends nothing. |
+| 2026-10-21 | A video's motion uses the Spin or Sweep tab's options rather than its own copy, plus its own direction for a spin. A spin or sweep with no limit records until STOP. |
+| 2026-10-21 | Captures have a start delay (default 5 s) to switch to the Camera app on the same phone. A photo capture pauses itself if no phone is ready for a shot, rather than losing it. Photo captures can pause; videos can't, apart from waiting for the phone. |
+| 2026-10-21 | Photo, video and shutter settings are a separate NVS blob (`capture`), so the `TTB3` settings kept their layout and survived. |
 
 ## Open questions
 

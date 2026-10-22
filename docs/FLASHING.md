@@ -27,7 +27,7 @@ Run every command from the repo folder, in PowerShell, Command Prompt or Git Bas
 
 - **Port:** picked automatically when exactly one USB serial device is plugged in. Bluetooth and built-in COM ports are never picked. Otherwise add the port, for example `tools\flash.cmd all -Port COM7`.
 - **Dry run:** add `-WhatIf` to compile and build the web UI image without writing anything to the board.
-- **Web UI uploads replace the whole file system**, but nothing you set is stored there. Settings, presets and the saved Wi-Fi network live in NVS, so firmware and web UI uploads both keep them.
+- **Web UI uploads replace the whole file system**, but nothing you set is stored there. Settings, presets, the saved Wi-Fi network and the shutter's phone pairing live in NVS, so firmware and web UI uploads both keep them.
 - **After a firmware update that changes the settings layout,** saved settings go back to defaults once (speed 5 RPM, acceleration 20, max speed 20, half-step). The log then says `Saved settings are from another version, using defaults`. The Phase 3 update does this.
 
 When `all` finishes, a turntable with no saved network starts Wi-Fi setup. See [Connecting to your Wi-Fi](#connecting-to-your-wi-fi).
@@ -88,6 +88,24 @@ Flash both parts with `tools\flash.cmd all`, since the firmware and the web UI b
 7. **Two phones:** with the page open on two phones, start a sweep on one. The other switches to the Sweep tab and shows the same cycle count. A preset saved on one shows up on the other.
 8. **Web UI upload keeps presets:** run `tools\flash.cmd webui`, reload, and check the presets are still there.
 
+### Phase 4 hardware checks
+
+Flash both parts with `tools\flash.cmd all`. The first build also downloads the NimBLE Bluetooth library (a few seconds). Your settings and presets carry over this time. A PC or second phone with the page open helps, because the iPhone will be busy in the Camera app.
+
+1. **Boot log:** run `tools\flash.cmd monitor` and press **EN**. Look for `Shutter: Bluetooth on, 0 phone(s) paired` and `Free heap: … bytes`, and note the free heap number. Reload the page: the speed, settings and Phase 3 presets are all still there.
+2. **Pair:** on the iPhone, open Settings → Bluetooth and tap **Turntable Shutter** under Other Devices, then **Pair**. In the page, the header shows a green **Shutter** pill, and Settings shows the phone as Connected.
+3. **Keyboard:** with the shutter connected, tap the preset name field. The iPhone's on-screen keyboard should still come up.
+4. **Test shutter:** open the Camera app on the iPhone, then press **Test** from the PC. It should take one photo. (From Safari on the iPhone itself, Test just shows the volume indicator.)
+5. **Wi-Fi alongside Bluetooth:** with the phone connected, spin at 10 RPM for a minute. The dial should keep updating on both devices, and the disk should run smoothly.
+6. **36 photos** (the roadmap's "done when"): on the Photo tab, keep 36 shots every 10°. Press **Start photos**, switch to the Camera app within 5 seconds, and leave it. After about a minute and 10 seconds at 5 RPM, the Photos app should have 36 new photos, and the disk should be back on the mark.
+7. **Pause:** start a 12-shot capture, press **Pause** from the PC, wait, then **Resume**. No shots are taken while paused.
+8. **Phone goes away:** during a capture, turn Bluetooth off on the iPhone. The capture pauses with "Paused: no phone on the shutter". Turn Bluetooth back on, wait for the green pill, and press **Resume**.
+9. **One-revolution video** (the other "done when"): on the Spin tab, set Run to `1` `revolutions`. On the Video tab, pick Spin, press **Start video**, and switch the Camera app to Video mode within 5 seconds. It should start recording, wait a second, turn once, wait a second, and stop recording.
+10. **STOP ends a recording:** set the Sweep tab to Run until STOP, then start a video with Motion Sweep. While it records, press STOP from the PC. The disk stops, and so does the recording.
+11. **Reboot:** unplug and replug the turntable. The iPhone reconnects by itself, with no new pairing.
+12. **Shutter off and on:** in Settings, set Bluetooth shutter to Off. The pill disappears and the iPhone shows it disconnected. Set it back to On, and the phone reconnects.
+13. **Access point mode:** use the setup page's **Use Turntable as an access point**, and check the page works and the shutter still connects. Then restart onto your Wi-Fi.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -106,6 +124,9 @@ Flash both parts with `tools\flash.cmd all`, since the firmware and the web UI b
 | Blank page or 404 | The web UI isn't on the board. Run `tools\flash.cmd webui`. |
 | The board keeps resetting, and the log shows `Brownout detector was triggered` | Power problem. See [HARDWARE.md](HARDWARE.md#power): the 470 µF capacitor, and a 1 A supply. |
 | In Git Bash, `tools/flash.cmd monitor` shows nothing, or Ctrl+C doesn't stop it | The standalone Git Bash window doesn't always pass console input and output through. Run `winpty tools/flash.cmd monitor` there, or use the Git Bash terminal inside VS Code. |
+| **Turntable Shutter** doesn't show in the iPhone's Bluetooth list | Check that Settings → Bluetooth shutter is On in the page. A phone that paired before lists it under My Devices instead. If you tapped **Forget paired phones** in the page, also choose Forget This Device on the iPhone, then pair again. |
+| The shutter is connected, but the Camera app doesn't take a photo | Press **Test** with Safari in front: the volume indicator should appear. If it does, the keys arrive, so try **Shutter key: Volume down** in Settings. Holding the press too long would start QuickTake video; the turntable's press is 60 ms. |
+| A capture says "Paused: no phone on the shutter" | The phone wasn't connected when a shot was due. Wait for the green **Shutter** pill, then press **Resume**. To run without the phone, turn off **Press the shutter**. |
 | PowerShell says running scripts is disabled | Use `tools\flash.cmd`, not `flash.ps1`. The `.cmd` wrapper bypasses the policy for that one run without changing any settings. |
 
 ## What the script runs

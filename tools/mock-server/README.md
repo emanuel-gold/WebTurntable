@@ -16,11 +16,13 @@ node tools/mock-server/server.js --help     # all options
 | `--data` | `code/WebTurntable/data` | Folder to serve. Files are read on every request, so edits show on reload. |
 | `--protocol` | `v2` | Protocol to emulate (see below). |
 | `--wifi` | `lan` | Start as a LAN client (`lan`) or in Wi-Fi setup (`setup`, where `/` redirects to the setup page). |
+| `--shutter` | `connected` | Start with a phone connected to the Bluetooth shutter (`connected`), or without one (`none`). |
 
 While it runs, type a command and press Enter:
 
 - `state` prints the device state.
 - `drop` cuts every WebSocket connection without a close frame, as if the turntable lost power. Use it to test the UI's reconnect.
+- `shutter` connects or disconnects the shutter's phone, for example to see a capture pause for it.
 - `quit` stops the server.
 
 The log mirrors the firmware's serial output (connects, commands, and `Settings saved` after the 750 ms debounce). It also shows the speed the motor would turn at.
@@ -28,7 +30,8 @@ The log mirrors the firmware's serial output (connects, commands, and `Settings 
 ## Protocols
 
 - **`v2`** (`protocol-v2.js`) emulates the [v2 protocol](../../docs/FIRMWARE.md#websocket-protocol-v2). It parses and validates commands the way `server.cpp` does, and simulates the motion engine with the same ramp, braking and move-target logic as `motion.cpp`, ticking every 10 ms. It broadcasts state after each command and 10 times a second while the disk moves or a job runs, and logs `Settings saved` once the disk is idle, as the firmware does.
-- **Jobs and presets** (Phase 3) follow `sequencer.cpp` and `presets.cpp`: spins with a stop condition, sweeps, live speed changes, and the presets messages. Presets are kept in memory until the mock stops. Timed jobs use real time, so the shortest one (0.1 minutes) takes 6 s.
+- **Jobs and presets** (Phases 3 and 4) follow `sequencer.cpp` and `presets.cpp`: spins with a stop condition, sweeps, photo and video captures, live speed changes, and the presets messages. Presets are kept in memory until the mock stops. Timed jobs use real time, so the shortest one (0.1 minutes) takes 6 s.
+- **The Bluetooth shutter** (Phase 4) is faked: there's a phone or there isn't (`--shutter`, the `shutter` command, or `device.setShutterPhone()` in tests). Each press is logged and counted (`device.shutterPresses`).
 - **Wi-Fi setup** is emulated in `protocol-v2.js` as well, with the routes `wireless.cpp` adds: `/setup`, `/api/wifi/status`, `scan`, `join` and `ap`. It also emulates the `wifi` field in the state and the `wifiSetup` command, which "restarts" by dropping the WebSockets.
   - Timings are shortened: the scan takes 1.5 s, a join 2 s, and the joined grace period 5 s.
   - The password `wrongpassword` fails, so the error path can be tried.

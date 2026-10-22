@@ -13,7 +13,7 @@ Push to `origin` only when the user asks. Never push or open PRs against `upstre
 
 Work directly on main (renamed from master); there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
 
-**Current state:** Phases 0, 1, 2, W and 3 are done and confirmed on hardware: the ESP32 port, the motion engine with protocol v2 and the new UI, home Wi-Fi with captive-portal setup, and sweeps, stop conditions and presets. Next is Phase 4 (Bluetooth shutter).
+**Current state:** Phases 0, 1, 2, W and 3 are done and confirmed on hardware: the ESP32 port, the motion engine with protocol v2 and the new UI, home Wi-Fi with captive-portal setup, and sweeps, stop conditions and presets. Phase 4 (Bluetooth shutter, photo and video capture) is built and waiting on the user's hardware test.
 
 **In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
 
@@ -32,8 +32,9 @@ As work lands, tick roadmap checkboxes, update its Status section, and record de
   - `WebTurntable.ino`: `setup()` and `loop()`.
   - `config.h`: pins, motor constants, and speed and acceleration limits.
   - `motion.{h,cpp}`: the motion engine. A GPTimer ISR steps the coils through the GPIO registers, and a 1 kHz ramp task on core 1 sets its interval. Position is in half-steps, positive clockwise. See [FIRMWARE.md](docs/FIRMWARE.md#motion-engine).
-  - `sequencer.{h,cpp}`: everything that starts motion from `loop()`. It runs moves (Rotate by, Go to), spins with a stop condition, and sweeps, and applies speed changes live. See [FIRMWARE.md](docs/FIRMWARE.md#sequencer-jobs).
-  - `presets.{h,cpp}`: 10 presets in NVS namespace `presets`, so uploads keep them.
+  - `sequencer.{h,cpp}`: everything that starts motion from `loop()`. It runs moves (Rotate by, Go to), spins with a stop condition, and sweeps, and applies speed changes live. Photo and video captures run on top of those. See [FIRMWARE.md](docs/FIRMWARE.md#sequencer-jobs).
+  - `shutter.{h,cpp}`: the Bluetooth shutter, a NimBLE consumer-control remote ("Turntable Shutter") that presses Volume Up on the paired phone. See [FIRMWARE.md](docs/FIRMWARE.md#shutter-ble-hid-phase-4-shuttercpp).
+  - `presets.{h,cpp}`: 10 presets in NVS namespace `presets`, so uploads keep them. When the layout changes, convert the old one on load (see `loadSlot()`).
   - `server.{h,cpp}`: AsyncWebServer with the WebSocket at `/ws` (protocol v2), and settings persistence (NVS via `Preferences`).
     - The AsyncTCP task only parses and validates JSON. Commands are queued and run in `loop()`, so settings and presets are single-threaded. Errors found while running a command go back to its sender by client id.
     - Flash writes pause the step interrupt, so settings and preset saves wait while a move, counted spin or sweep leg runs. Spins and a sweep's dwell allow them.
