@@ -13,7 +13,7 @@ Push to `origin` only when the user asks. Never push or open PRs against `upstre
 
 Work directly on main (renamed from master); there are no feature branches. v1 (ESP8266, Wemos D1 mini) is frozen at tag `v1-esp8266` and isn't maintained. Check out the tag to build it.
 
-**Current state:** Phases 0, 1, 2 and W are done and confirmed on hardware: the ESP32 port, the motion engine with protocol v2 and the new UI, and home Wi-Fi with captive-portal setup. Phase 3 (sweeps, stop conditions, presets) is built and waiting on the user's hardware test. After that comes Phase 4 (Bluetooth shutter).
+**Current state:** Phases 0, 1, 2, W and 3 are done and confirmed on hardware: the ESP32 port, the motion engine with protocol v2 and the new UI, home Wi-Fi with captive-portal setup, and sweeps, stop conditions and presets. Next is Phase 4 (Bluetooth shutter).
 
 **In progress:** v2 for an ESP32 DevKit V1, adding timer-driven motion with ramps, angle control, back-and-forth mode, timers, presets, a Bluetooth camera shutter, and new enclosure parts.
 

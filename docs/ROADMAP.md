@@ -8,17 +8,14 @@ Mark items `[x]` as they land.
 
 _Last updated 2026-10-21._
 
-- **Done:** planning, Phases 0, 1, 2 and W, all confirmed on hardware.
+- **Done:** planning, Phases 0, 1, 2, W and 3, all confirmed on hardware.
   - **Phase 2 (motion engine):** smooth ramps, angle control, protocol v2 and the new UI.
     - Calibrated to the 64:1 motor (4096 half-steps per revolution). A 3600° test now lands on the mark.
     - Speed is capped at 20 RPM. Spins don't resume after a power loss, and CW/CCW are press-to-toggle.
   - **Phase W (Wi-Fi):** home Wi-Fi with captive-portal setup, an access-point fallback, Change Wi-Fi network, and the reset button on GPIO 4.
-- **Phase 3 (modes, timer, presets): built, waiting on the hardware test.** Compile-checked without warnings and covered by the mock server's tests (30 passing), with the UI checked in a browser at phone width.
-  - Sweeps between two angles from zero, spins and sweeps that stop after a count or a time, and 10 presets in NVS.
-  - Speed changes now apply live to moves too (moved up from the backlog).
-  - The settings layout changed (`TTB3`), so saved settings reset to defaults once after this flash.
-- **Known limitation:** the motor shaft has a little play, so a reversal (for example +360 then −360) misses by that much. Backlash compensation was drafted but deferred to the backlog (2026-10-21). Sweeps reverse every leg, so they show it too.
-- **Next:** the [Phase 3 hardware checks](FLASHING.md#phase-3-hardware-checks), then Phase 4 (Bluetooth shutter). Phase E (enclosure) can run alongside.
+  - **Phase 3 (modes, timer, presets):** sweeps between two angles from zero, spins and sweeps that stop after a count or a time, and 10 presets in NVS that survive reboots and uploads. Speed changes apply live to moves too.
+- **Known limitation:** the motor shaft has a little play, so a reversal (for example +360 then −360) misses by that much. Backlash compensation was drafted but deferred to the backlog (2026-10-21). Sweeps reverse every leg, but the Phase 3 checks found no problem there.
+- **Next:** Phase 4 (Bluetooth shutter), starting with the BLE HID library spike. Phase E (enclosure) can run alongside.
 - **Deferred:** the BOOT-button question (open question 2), at the user's call. Phase E needs open question 1.
 - **Working style:**
   - Work on main. v1 stays reproducible at tag `v1-esp8266`.
@@ -107,7 +104,7 @@ Joining the user's network like a smart home device, instead of always being an 
 
 **Done when:** a fresh turntable is set up from the iPhone without typing an address, reboots straight onto the home Wi-Fi, and stays reachable at `turntable.local` from the phone and the PC with both still on the internet.
 
-## Phase 3: Modes, timer, presets
+## Phase 3: Modes, timer, presets (done 2026-10-21)
 
 - [x] Back-and-forth (sweep): two end angles from zero, speed, dwell at the ends, cycle count. It goes to From first, and one cycle is From → To → From.
 - [x] Stop conditions for spin and sweep: after N revolutions or cycles, or after T minutes. The UI shows what remains.
@@ -119,7 +116,7 @@ Joining the user's network like a smart home device, instead of always being an 
   - The moves moved from `server.cpp` to the new `sequencer.cpp`, unchanged.
   - Errors found when a command runs now reach the phone that sent it.
   - Rotate by accepts a minus sign on the iPhone (its decimal keypad has none).
-- [ ] Hardware test by the user ([Phase 3 hardware checks](FLASHING.md#phase-3-hardware-checks)).
+- [x] Hardware test by the user ([Phase 3 hardware checks](FLASHING.md#phase-3-hardware-checks)): all passed on 2026-10-21, including a preset that reproduced its motion after a power cycle, and presets surviving a web UI upload.
 
 **Done when:** a saved preset still reproduces the same motion after a reboot.
 
@@ -225,6 +222,7 @@ Approach and measurements are in [ENCLOSURE.md](ENCLOSURE.md).
 | 2026-10-21 | One speed setting serves spins, sweeps and moves. Spin and sweep options are device settings sent as they change, like speed, so every phone shows them and they're saved. Start commands carry them too. |
 | 2026-10-21 | Live speed changes during moves (a backlog item) were done in Phase 3, because counted spins and sweeps are moves. |
 | 2026-10-21 | The settings struct is now `TTB3`. Settings saved by Phase 2 firmware are ignored, so they reset to defaults once. A migration wasn't worth it for one device. |
+| 2026-10-21 | Phase 3 closed after the hardware checks passed. |
 
 ## Open questions
 
