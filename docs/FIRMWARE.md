@@ -26,6 +26,7 @@ This describes the target firmware, not the current code. The v1 code is summari
 | ESP Async WebServer | 3.12.1 |
 | Async TCP | 3.5.0 |
 | ArduinoJson | 7.4.3 |
+| NimBLE-Arduino | 2.5.1 (Phase 4, Bluetooth shutter) |
 
 Compile check:
 

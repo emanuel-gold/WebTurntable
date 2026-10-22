@@ -3,6 +3,7 @@
 #include "motion.h"
 #include "presets.h"
 #include "sequencer.h"
+#include "shutter.h"
 #include "wireless.h"
 
 #include <cmath>
@@ -23,6 +24,7 @@ namespace
 	// Settings live in NVS, so uploading the web UI (which rewrites LittleFS) keeps them
 	constexpr char SETTINGS_NAMESPACE[] = "turntable";
 	constexpr char SETTINGS_KEY[] = "settings";
+	constexpr char CAPTURE_KEY[] = "capture";
 	constexpr unsigned long SETTINGS_SAVE_DELAY_MS = 750;
 	constexpr unsigned long WS_CLEANUP_INTERVAL_MS = 1000;
 	constexpr unsigned long STATE_INTERVAL_MS = 100;
@@ -42,8 +44,22 @@ namespace
 		SweepOptions sweep;
 	};
 
+	// Photo, video and shutter settings (Phase 4), under their own key so the settings above
+	// kept their layout. Bump MAGIC whenever this layout changes.
+	struct CaptureSettings
+	{
+		static constexpr uint32_t MAGIC = 0x43415031;   // "CAP1"
+
+		uint32_t magic        = MAGIC;
+		PhotoOptions photo;
+		VideoOptions video;
+		bool shutterEnabled   = true;
+		ShutterKey shutterKey = ShutterKey::VolumeUp;
+	};
+
 	// Only touched from loop(), which runs every queued command
 	TurntableSettings settings;
+	CaptureSettings captureSettings;
 	bool settingsDirty = false;
 	unsigned long lastSettingsChangeMs = 0;
 	bool presetsChanged = false;
@@ -63,25 +79,47 @@ namespace
 		SpinOptions,
 		SweepOptions,
 		Sweep,
+		PhotoOptions,
+		Photo,
+		VideoOptions,
+		Video,
+		CapturePause,
+		CaptureResume,
+		Shutter,
+		ShutterTest,
+		ShutterForget,
 		PresetSave,
 		PresetApply,
 		PresetDelete,
 		Hello           // A client connected: send it the presets
 	};
 
-	// Which spin and sweep option fields a command carries
-	constexpr uint8_t FIELD_STOP_AFTER = 1 << 0;
-	constexpr uint8_t FIELD_STOP_VALUE = 1 << 1;
-	constexpr uint8_t FIELD_FROM = 1 << 2;
-	constexpr uint8_t FIELD_TO = 1 << 3;
-	constexpr uint8_t FIELD_DWELL = 1 << 4;
+	// Which option fields a command carries
+	constexpr uint32_t FIELD_STOP_AFTER = 1u << 0;
+	constexpr uint32_t FIELD_STOP_VALUE = 1u << 1;
+	constexpr uint32_t FIELD_FROM = 1u << 2;
+	constexpr uint32_t FIELD_TO = 1u << 3;
+	constexpr uint32_t FIELD_DWELL = 1u << 4;
+	constexpr uint32_t FIELD_SHOTS = 1u << 5;
+	constexpr uint32_t FIELD_STEP = 1u << 6;
+	constexpr uint32_t FIELD_SETTLE = 1u << 7;
+	constexpr uint32_t FIELD_AFTER = 1u << 8;
+	constexpr uint32_t FIELD_DIR = 1u << 9;
+	constexpr uint32_t FIELD_RETURN = 1u << 10;
+	constexpr uint32_t FIELD_PRESS = 1u << 11;
+	constexpr uint32_t FIELD_DELAY = 1u << 12;
+	constexpr uint32_t FIELD_MOTION = 1u << 13;
+	constexpr uint32_t FIELD_LEAD_IN = 1u << 14;
+	constexpr uint32_t FIELD_LEAD_OUT = 1u << 15;
+	constexpr uint32_t FIELD_ENABLED = 1u << 16;
+	constexpr uint32_t FIELD_KEY = 1u << 17;
 
 	// One validated command from a client
 	struct Command
 	{
 		CommandType type;
 		uint32_t clientId;      // Who to tell if the command fails when it runs
-		float value;            // RPM for Speed, Run and Sweep, degrees for MoveBy and MoveTo
+		float value;            // RPM for Speed, Run, Sweep, Photo and Video, degrees for MoveBy and MoveTo
 		bool hasValue;
 		Direction dir;
 		MoveDirection moveDir;
@@ -91,9 +129,13 @@ namespace
 		float maxRpm;
 		bool hasAccel;
 		float accel;
-		uint8_t fields;         // FIELD_* bits for spin and sweep
+		uint32_t fields;        // FIELD_* bits
 		SpinOptions spin;
 		SweepOptions sweep;
+		PhotoOptions photo;
+		VideoOptions video;
+		bool shutterEnabled;
+		ShutterKey shutterKey;
 		JobType presetMode;
 		uint8_t presetId;
 		char presetName[PRESET_NAME_SIZE];
@@ -157,10 +199,64 @@ namespace
 		}
 	}
 
+	// Protocol name for a job type or preset mode
+	const char* jobTypeName(JobType type)
+	{
+		switch (type)
+		{
+			case JobType::Spin:
+				return "spin";
+			case JobType::Sweep:
+				return "sweep";
+			case JobType::Photo:
+				return "photo";
+			case JobType::Video:
+				return "video";
+			default:
+				return "none";
+		}
+	}
+
+	// Protocol name for a capture stage
+	const char* captureStageName(CaptureStage stage)
+	{
+		switch (stage)
+		{
+			case CaptureStage::Move:
+				return "move";
+			case CaptureStage::Settle:
+				return "settle";
+			case CaptureStage::Shot:
+				return "shot";
+			case CaptureStage::Return:
+				return "return";
+			case CaptureStage::LeadIn:
+				return "leadIn";
+			case CaptureStage::Motion:
+				return "motion";
+			case CaptureStage::LeadOut:
+				return "leadOut";
+			default:
+				return "delay";
+		}
+	}
+
+	// Protocol name for a shutter key
+	const char* shutterKeyName(ShutterKey key)
+	{
+		return key == ShutterKey::VolumeDown ? "volumeDown" : "volumeUp";
+	}
+
 	// Keep a value inside [low, high]
 	float clampFloat(float value, float low, float high)
 	{
 		return value < low ? low : (value > high ? high : value);
+	}
+
+	// Milliseconds from a JSON number, kept inside [0, high]
+	uint32_t toMs(float value, uint32_t high)
+	{
+		return value <= 0.0f ? 0 : (value >= high ? high : (uint32_t)lroundf(value));
 	}
 
 	// Log the persisted settings to the serial console
@@ -173,6 +269,15 @@ namespace
 			stopAfterName(settings.spin.stopAfter, "revs"), settings.spin.stopValue,
 			settings.sweep.fromDeg, settings.sweep.toDeg, (unsigned long)settings.sweep.dwellMs,
 			stopAfterName(settings.sweep.stopAfter, "cycles"), settings.sweep.stopValue);
+		const PhotoOptions &photo = captureSettings.photo;
+		const VideoOptions &video = captureSettings.video;
+		Serial.printf("  photo=%u shots %.2f deg %s, settle %lu, after %lu, delay %lu, return=%d, press=%d; "
+			"video=%s %s, lead-in %lu, lead-out %lu, delay %lu; shutter=%s %s\n",
+			photo.shots, photo.stepDeg, directionName(photo.dir), (unsigned long)photo.settleMs,
+			(unsigned long)photo.afterMs, (unsigned long)photo.delayMs, photo.returnToStart, photo.pressShutter,
+			jobTypeName(video.motion), directionName(video.dir), (unsigned long)video.leadInMs,
+			(unsigned long)video.leadOutMs, (unsigned long)video.delayMs,
+			captureSettings.shutterEnabled ? "on" : "off", shutterKeyName(captureSettings.shutterKey));
 	}
 
 	// Mark settings as dirty and start the save delay timer
@@ -186,19 +291,40 @@ namespace
 	void saveTurntableState()
 	{
 		settingsDirty = false;
-		size_t bytesWritten = preferences.putBytes(SETTINGS_KEY, &settings, sizeof(settings));
-		if (bytesWritten != sizeof(settings))
+		// Not retried until the next change, so a failing flash isn't hammered
+		if (preferences.putBytes(SETTINGS_KEY, &settings, sizeof(settings)) != sizeof(settings)
+			|| preferences.putBytes(CAPTURE_KEY, &captureSettings, sizeof(captureSettings)) != sizeof(captureSettings))
 		{
-			// Not retried until the next change, so a failing flash isn't hammered
 			Serial.println("Error: Failed to write settings");
 			return;
 		}
 		logSettings("Settings saved:");
 	}
 
+	// Load the photo, video and shutter settings; the defaults stay if there are none
+	void loadCaptureSettings()
+	{
+		if (!preferences.isKey(CAPTURE_KEY))
+		{
+			return;
+		}
+		CaptureSettings loaded;
+		size_t bytesRead = preferences.getBytes(CAPTURE_KEY, &loaded, sizeof(loaded));
+		if (bytesRead != sizeof(loaded) || loaded.magic != CaptureSettings::MAGIC)
+		{
+			Serial.println("Saved capture settings are from another version, using defaults");
+			return;
+		}
+		clampPhotoOptions(loaded.photo);
+		clampVideoOptions(loaded.video);
+		loaded.shutterKey = loaded.shutterKey == ShutterKey::VolumeDown ? ShutterKey::VolumeDown : ShutterKey::VolumeUp;
+		captureSettings = loaded;
+	}
+
 	// Load turntable settings from flash memory, returns true if successful
 	bool loadTurntableState()
 	{
+		loadCaptureSettings();
 		if (!preferences.isKey(SETTINGS_KEY))
 		{
 			Serial.println("No saved settings found");
@@ -250,6 +376,50 @@ namespace
 		object["stopValue"] = roundedJson(options.stopValue, 2);
 	}
 
+	// Add photo options to a JSON object
+	void addPhotoOptions(JsonObject object, const PhotoOptions &options)
+	{
+		object["shots"] = options.shots;
+		object["stepDeg"] = roundedJson(options.stepDeg, 2);
+		object["settleMs"] = options.settleMs;
+		object["afterMs"] = options.afterMs;
+		object["dir"] = directionName(options.dir);
+		object["returnToStart"] = options.returnToStart;
+		object["pressShutter"] = options.pressShutter;
+		object["delayMs"] = options.delayMs;
+	}
+
+	// Add video options to a JSON object
+	void addVideoOptions(JsonObject object, const VideoOptions &options)
+	{
+		object["motion"] = jobTypeName(options.motion);
+		object["dir"] = directionName(options.dir);
+		object["leadInMs"] = options.leadInMs;
+		object["leadOutMs"] = options.leadOutMs;
+		object["delayMs"] = options.delayMs;
+	}
+
+	// Add what's left of a spin or sweep: kind is the spin or sweep that's running
+	void addMotionProgress(JsonObject object, JobType kind, const JobStatus &job)
+	{
+		if (kind == JobType::Spin && job.stopAfter == StopAfter::Count)
+		{
+			object["revsLeft"] = roundedJson(job.revsLeft, 2);
+		}
+		if (kind == JobType::Sweep)
+		{
+			object["cycle"] = job.cycle;
+			if (job.stopAfter == StopAfter::Count)
+			{
+				object["cycles"] = job.cycles;
+			}
+		}
+		if (job.stopAfter == StopAfter::Minutes)
+		{
+			object["secondsLeft"] = job.secondsLeft;
+		}
+	}
+
 	// Serialize the current state for the web UI
 	String stateJson()
 	{
@@ -265,7 +435,7 @@ namespace
 		doc["dir"] = directionName(settings.dir);
 		doc["spinning"] = job.type == JobType::Spin;
 
-		// The running spin or sweep and what's left of it, or null
+		// The running job and what's left of it, or null
 		if (job.type == JobType::None)
 		{
 			doc["job"] = nullptr;
@@ -273,27 +443,50 @@ namespace
 		else
 		{
 			JsonObject running = doc["job"].to<JsonObject>();
-			running["type"] = job.type == JobType::Spin ? "spin" : "sweep";
-			if (job.type == JobType::Spin && job.stopAfter == StopAfter::Count)
+			running["type"] = jobTypeName(job.type);
+			if (job.type == JobType::Spin || job.type == JobType::Sweep)
 			{
-				running["revsLeft"] = roundedJson(job.revsLeft, 2);
+				addMotionProgress(running, job.type, job);
 			}
-			if (job.type == JobType::Sweep)
+			else
 			{
-				running["cycle"] = job.cycle;
-				if (job.stopAfter == StopAfter::Count)
+				running["stage"] = captureStageName(job.stage);
+				if (job.stage == CaptureStage::Delay)
 				{
-					running["cycles"] = job.cycles;
+					running["startsIn"] = job.startsIn;
 				}
-			}
-			if (job.stopAfter == StopAfter::Minutes)
-			{
-				running["secondsLeft"] = job.secondsLeft;
+				running["paused"] = job.paused;
+				if (job.needsShutter)
+				{
+					running["needsShutter"] = true;
+				}
+				if (job.type == JobType::Photo)
+				{
+					running["shot"] = job.shot;
+					running["shots"] = job.shots;
+				}
+				else
+				{
+					running["motion"] = jobTypeName(job.motion);
+					if (job.stage == CaptureStage::Motion)
+					{
+						addMotionProgress(running, job.motion, job);
+					}
+				}
 			}
 		}
 
 		addSpinOptions(doc["spin"].to<JsonObject>(), settings.spin);
 		addSweepOptions(doc["sweep"].to<JsonObject>(), settings.sweep);
+		addPhotoOptions(doc["photo"].to<JsonObject>(), captureSettings.photo);
+		addVideoOptions(doc["video"].to<JsonObject>(), captureSettings.video);
+
+		const ShutterStatus shutter = shutterStatus();
+		JsonObject shutterJson = doc["shutter"].to<JsonObject>();
+		shutterJson["enabled"] = shutter.enabled;
+		shutterJson["key"] = shutterKeyName(captureSettings.shutterKey);
+		shutterJson["connected"] = shutter.connected;
+		shutterJson["ready"] = shutter.ready;
 
 		JsonObject current = doc["settings"].to<JsonObject>();
 		current["driveMode"] = driveModeName(settings.driveMode);
@@ -319,6 +512,10 @@ namespace
 		limits["maxCycles"] = MAX_SWEEP_CYCLES;
 		limits["maxSweepDeg"] = MAX_SWEEP_DEG;
 		limits["maxDwellMs"] = MAX_DWELL_MS;
+		limits["maxShots"] = MAX_PHOTO_SHOTS;
+		limits["minStepDeg"] = roundedJson(MIN_PHOTO_STEP_DEG, 1);
+		limits["maxStepDeg"] = MAX_PHOTO_STEP_DEG;
+		limits["maxWaitMs"] = MAX_WAIT_MS;
 
 		String json;
 		serializeJson(doc, json);
@@ -341,15 +538,31 @@ namespace
 			JsonObject item = list.add<JsonObject>();
 			item["id"] = id;
 			item["name"] = preset->name;
-			item["mode"] = preset->mode == JobType::Sweep ? "sweep" : "spin";
+			item["mode"] = jobTypeName(preset->mode);
 			item["rpm"] = roundedJson(preset->rpm, 2);
-			if (preset->mode == JobType::Sweep)
+			switch (preset->mode)
 			{
-				addSweepOptions(item, preset->sweep);
-			}
-			else
-			{
-				addSpinOptions(item, preset->spin);
+				case JobType::Sweep:
+					addSweepOptions(item, preset->sweep);
+					break;
+				case JobType::Photo:
+					addPhotoOptions(item, preset->photo);
+					break;
+				case JobType::Video:
+					// The motion's own options come along, nested
+					addVideoOptions(item, preset->video);
+					if (preset->video.motion == JobType::Sweep)
+					{
+						addSweepOptions(item["sweep"].to<JsonObject>(), preset->sweep);
+					}
+					else
+					{
+						addSpinOptions(item["spin"].to<JsonObject>(), preset->spin);
+					}
+					break;
+				default:
+					addSpinOptions(item, preset->spin);
+					break;
 			}
 		}
 
@@ -404,7 +617,7 @@ namespace
 	}
 
 	// Read an optional number field into target and mark it in fields; false if it isn't a number
-	bool parseNumberField(JsonVariantConst value, uint8_t field, float &target, Command &command)
+	bool parseNumberField(JsonVariantConst value, uint32_t field, float &target, Command &command)
 	{
 		if (value.isNull())
 		{
@@ -416,6 +629,52 @@ namespace
 		}
 		target = value.as<float>();
 		command.fields |= field;
+		return true;
+	}
+
+	// Read an optional number of milliseconds, kept inside [0, high]; false if it isn't a number
+	bool parseMsField(JsonVariantConst value, uint32_t field, uint32_t high, uint32_t &target, Command &command)
+	{
+		float ms = 0.0f;
+		if (!parseNumberField(value, field, ms, command))
+		{
+			return false;
+		}
+		if (command.fields & field)
+		{
+			target = toMs(ms, high);
+		}
+		return true;
+	}
+
+	// Read an optional true/false field; false if it's present but not a boolean
+	bool parseBoolField(JsonVariantConst value, uint32_t field, bool &target, Command &command)
+	{
+		if (value.isNull())
+		{
+			return true;
+		}
+		if (!value.is<bool>())
+		{
+			return false;
+		}
+		target = value.as<bool>();
+		command.fields |= field;
+		return true;
+	}
+
+	// Read an optional "cw"/"ccw" field; false if it's present but invalid
+	bool parseDirectionField(JsonVariantConst value, Direction &dir, Command &command)
+	{
+		if (value.isNull())
+		{
+			return true;
+		}
+		if (!parseDirection(value, dir))
+		{
+			return false;
+		}
+		command.fields |= FIELD_DIR;
 		return true;
 	}
 
@@ -459,16 +718,95 @@ namespace
 	// Read the optional sweep option fields. On failure, message says why.
 	bool parseSweepFields(JsonDocument &json, Command &command, const char *&message)
 	{
-		float dwellMs = 0.0f;
 		if (!parseNumberField(json["fromDeg"], FIELD_FROM, command.sweep.fromDeg, command)
 			|| !parseNumberField(json["toDeg"], FIELD_TO, command.sweep.toDeg, command)
-			|| !parseNumberField(json["dwellMs"], FIELD_DWELL, dwellMs, command))
+			|| !parseMsField(json["dwellMs"], FIELD_DWELL, MAX_DWELL_MS, command.sweep.dwellMs, command))
 		{
 			message = "fromDeg, toDeg and dwellMs must be numbers";
 			return false;
 		}
-		command.sweep.dwellMs = dwellMs <= 0.0f ? 0 : (dwellMs >= MAX_DWELL_MS ? MAX_DWELL_MS : (uint32_t)lroundf(dwellMs));
 		return parseStopFields(json, "cycles", command.sweep.stopAfter, command.sweep.stopValue, command, message);
+	}
+
+	// Read the optional photo option fields. On failure, message says why.
+	bool parsePhotoFields(JsonDocument &json, Command &command, const char *&message)
+	{
+		PhotoOptions &photo = command.photo;
+		float shots = 0.0f;
+		if (!parseNumberField(json["shots"], FIELD_SHOTS, shots, command)
+			|| !parseNumberField(json["stepDeg"], FIELD_STEP, photo.stepDeg, command)
+			|| !parseMsField(json["settleMs"], FIELD_SETTLE, MAX_WAIT_MS, photo.settleMs, command)
+			|| !parseMsField(json["afterMs"], FIELD_AFTER, MAX_WAIT_MS, photo.afterMs, command)
+			|| !parseMsField(json["delayMs"], FIELD_DELAY, MAX_WAIT_MS, photo.delayMs, command))
+		{
+			message = "shots, stepDeg, settleMs, afterMs and delayMs must be numbers";
+			return false;
+		}
+		photo.shots = shots <= 1.0f ? 1 : (shots >= MAX_PHOTO_SHOTS ? MAX_PHOTO_SHOTS : (uint16_t)lroundf(shots));
+		if (!parseDirectionField(json["dir"], photo.dir, command))
+		{
+			message = "dir must be cw or ccw";
+			return false;
+		}
+		if (!parseBoolField(json["returnToStart"], FIELD_RETURN, photo.returnToStart, command)
+			|| !parseBoolField(json["pressShutter"], FIELD_PRESS, photo.pressShutter, command))
+		{
+			message = "returnToStart and pressShutter must be true or false";
+			return false;
+		}
+		return true;
+	}
+
+	// Read the optional video option fields. On failure, message says why.
+	bool parseVideoFields(JsonDocument &json, Command &command, const char *&message)
+	{
+		VideoOptions &video = command.video;
+		const JsonVariantConst motion = json["motion"];
+		if (!motion.isNull())
+		{
+			if (motion != "spin" && motion != "sweep")
+			{
+				message = "motion must be spin or sweep";
+				return false;
+			}
+			video.motion = motion == "sweep" ? JobType::Sweep : JobType::Spin;
+			command.fields |= FIELD_MOTION;
+		}
+		if (!parseDirectionField(json["dir"], video.dir, command))
+		{
+			message = "dir must be cw or ccw";
+			return false;
+		}
+		if (!parseMsField(json["leadInMs"], FIELD_LEAD_IN, MAX_WAIT_MS, video.leadInMs, command)
+			|| !parseMsField(json["leadOutMs"], FIELD_LEAD_OUT, MAX_WAIT_MS, video.leadOutMs, command)
+			|| !parseMsField(json["delayMs"], FIELD_DELAY, MAX_WAIT_MS, video.delayMs, command))
+		{
+			message = "leadInMs, leadOutMs and delayMs must be numbers";
+			return false;
+		}
+		return true;
+	}
+
+	// Read the optional shutter setting fields. On failure, message says why.
+	bool parseShutterFields(JsonDocument &json, Command &command, const char *&message)
+	{
+		if (!parseBoolField(json["enabled"], FIELD_ENABLED, command.shutterEnabled, command))
+		{
+			message = "enabled must be true or false";
+			return false;
+		}
+		const JsonVariantConst key = json["key"];
+		if (!key.isNull())
+		{
+			if (key != "volumeUp" && key != "volumeDown")
+			{
+				message = "key must be volumeUp or volumeDown";
+				return false;
+			}
+			command.shutterKey = key == "volumeDown" ? ShutterKey::VolumeDown : ShutterKey::VolumeUp;
+			command.fields |= FIELD_KEY;
+		}
+		return true;
 	}
 
 	// Read a preset id; false if it isn't a whole number
@@ -489,30 +827,38 @@ namespace
 		command = {};
 		const JsonVariantConst cmd = json["cmd"];
 
-		if (cmd == "speed" || cmd == "run" || cmd == "sweep")
+		if (cmd == "speed" || cmd == "run" || cmd == "sweep" || cmd == "photo" || cmd == "video")
 		{
-			command.type = cmd == "speed" ? CommandType::Speed : (cmd == "run" ? CommandType::Run : CommandType::Sweep);
+			command.type = cmd == "speed" ? CommandType::Speed
+				: cmd == "run" ? CommandType::Run
+				: cmd == "sweep" ? CommandType::Sweep
+				: cmd == "photo" ? CommandType::Photo
+				: CommandType::Video;
 			command.hasValue = json["rpm"].is<float>();
 			command.value = json["rpm"] | 0.0f;
-			if (command.type == CommandType::Speed && !command.hasValue)
+			switch (command.type)
 			{
-				message = "speed needs a number rpm";
-				return false;
+				case CommandType::Speed:
+					if (!command.hasValue)
+					{
+						message = "speed needs a number rpm";
+						return false;
+					}
+					return true;
+				case CommandType::Run:
+					if (!parseDirection(json["dir"], command.dir))
+					{
+						message = "run needs dir cw or ccw";
+						return false;
+					}
+					return parseStopFields(json, "revs", command.spin.stopAfter, command.spin.stopValue, command, message);
+				case CommandType::Sweep:
+					return parseSweepFields(json, command, message);
+				case CommandType::Photo:
+					return parsePhotoFields(json, command, message);
+				default:
+					return parseVideoFields(json, command, message);
 			}
-			if (command.type == CommandType::Run)
-			{
-				if (!parseDirection(json["dir"], command.dir))
-				{
-					message = "run needs dir cw or ccw";
-					return false;
-				}
-				return parseStopFields(json, "revs", command.spin.stopAfter, command.spin.stopValue, command, message);
-			}
-			if (command.type == CommandType::Sweep)
-			{
-				return parseSweepFields(json, command, message);
-			}
-			return true;
 		}
 		if (cmd == "spinOptions")
 		{
@@ -524,9 +870,32 @@ namespace
 			command.type = CommandType::SweepOptions;
 			return parseSweepFields(json, command, message);
 		}
+		if (cmd == "photoOptions")
+		{
+			command.type = CommandType::PhotoOptions;
+			return parsePhotoFields(json, command, message);
+		}
+		if (cmd == "videoOptions")
+		{
+			command.type = CommandType::VideoOptions;
+			return parseVideoFields(json, command, message);
+		}
+		if (cmd == "shutter")
+		{
+			command.type = CommandType::Shutter;
+			return parseShutterFields(json, command, message);
+		}
 		if (cmd == "stop" || cmd == "halt" || cmd == "setZero")
 		{
 			command.type = cmd == "stop" ? CommandType::Stop : (cmd == "halt" ? CommandType::Halt : CommandType::SetZero);
+			return true;
+		}
+		if (cmd == "capturePause" || cmd == "captureResume" || cmd == "shutterTest" || cmd == "shutterForget")
+		{
+			command.type = cmd == "capturePause" ? CommandType::CapturePause
+				: cmd == "captureResume" ? CommandType::CaptureResume
+				: cmd == "shutterTest" ? CommandType::ShutterTest
+				: CommandType::ShutterForget;
 			return true;
 		}
 		if (cmd == "moveBy" || cmd == "moveTo")
@@ -566,13 +935,16 @@ namespace
 			}
 			strlcpy(command.presetName, name, sizeof(command.presetName));
 			const JsonVariantConst mode = json["mode"];
-			if (mode != "spin" && mode != "sweep")
+			if (mode == "spin" || mode == "sweep" || mode == "photo" || mode == "video")
 			{
-				message = "presetSave needs mode spin or sweep";
-				return false;
+				command.presetMode = mode == "sweep" ? JobType::Sweep
+					: mode == "photo" ? JobType::Photo
+					: mode == "video" ? JobType::Video
+					: JobType::Spin;
+				return true;
 			}
-			command.presetMode = mode == "sweep" ? JobType::Sweep : JobType::Spin;
-			return true;
+			message = "presetSave needs mode spin, sweep, photo or video";
+			return false;
 		}
 		if (cmd == "presetApply" || cmd == "presetDelete")
 		{
@@ -649,6 +1021,44 @@ namespace
 		clampSweepOptions(settings.sweep);
 	}
 
+	// Copy the photo option fields a command carries into the settings
+	void applyPhotoFields(const Command &command)
+	{
+		PhotoOptions &photo = captureSettings.photo;
+		const uint32_t fields = command.fields;
+		photo.shots = fields & FIELD_SHOTS ? command.photo.shots : photo.shots;
+		photo.stepDeg = fields & FIELD_STEP ? command.photo.stepDeg : photo.stepDeg;
+		photo.settleMs = fields & FIELD_SETTLE ? command.photo.settleMs : photo.settleMs;
+		photo.afterMs = fields & FIELD_AFTER ? command.photo.afterMs : photo.afterMs;
+		photo.dir = fields & FIELD_DIR ? command.photo.dir : photo.dir;
+		photo.returnToStart = fields & FIELD_RETURN ? command.photo.returnToStart : photo.returnToStart;
+		photo.pressShutter = fields & FIELD_PRESS ? command.photo.pressShutter : photo.pressShutter;
+		photo.delayMs = fields & FIELD_DELAY ? command.photo.delayMs : photo.delayMs;
+		clampPhotoOptions(photo);
+	}
+
+	// Copy the video option fields a command carries into the settings
+	void applyVideoFields(const Command &command)
+	{
+		VideoOptions &video = captureSettings.video;
+		const uint32_t fields = command.fields;
+		video.motion = fields & FIELD_MOTION ? command.video.motion : video.motion;
+		video.dir = fields & FIELD_DIR ? command.video.dir : video.dir;
+		video.leadInMs = fields & FIELD_LEAD_IN ? command.video.leadInMs : video.leadInMs;
+		video.leadOutMs = fields & FIELD_LEAD_OUT ? command.video.leadOutMs : video.leadOutMs;
+		video.delayMs = fields & FIELD_DELAY ? command.video.delayMs : video.delayMs;
+		clampVideoOptions(video);
+	}
+
+	// Take an rpm a start command carries as the new speed setting
+	void applyRpm(const Command &command)
+	{
+		if (command.hasValue)
+		{
+			settings.rpm = clampFloat(command.value, MIN_RPM, settings.maxRpm);
+		}
+	}
+
 	// Run one command. Called from loop() only. Returns an error for the sender, or nullptr.
 	const char* executeCommand(const Command &command)
 	{
@@ -661,10 +1071,7 @@ namespace
 				break;
 
 			case CommandType::Run:
-				if (command.hasValue)
-				{
-					settings.rpm = clampFloat(command.value, MIN_RPM, settings.maxRpm);
-				}
+				applyRpm(command);
 				settings.dir = command.dir;
 				applySpinFields(command);
 				queueSettingsSave();
@@ -682,16 +1089,74 @@ namespace
 				break;
 
 			case CommandType::Sweep:
-				if (command.hasValue)
-				{
-					settings.rpm = clampFloat(command.value, MIN_RPM, settings.maxRpm);
-				}
+				applyRpm(command);
 				applySweepFields(command);
 				queueSettingsSave();
 				if (!sequencerSweep(settings.rpm, settings.sweep))
 				{
 					return "From and To must be different angles";
 				}
+				break;
+
+			case CommandType::PhotoOptions:
+				applyPhotoFields(command);
+				queueSettingsSave();
+				break;
+
+			case CommandType::Photo:
+				applyRpm(command);
+				applyPhotoFields(command);
+				queueSettingsSave();
+				return sequencerPhoto(settings.rpm, captureSettings.photo, captureSettings.shutterKey);
+
+			case CommandType::VideoOptions:
+				applyVideoFields(command);
+				queueSettingsSave();
+				break;
+
+			case CommandType::Video:
+				applyRpm(command);
+				applyVideoFields(command);
+				queueSettingsSave();
+				return sequencerVideo(settings.rpm, captureSettings.video, settings.spin, settings.sweep,
+					captureSettings.shutterKey);
+
+			case CommandType::CapturePause:
+				if (!sequencerPause())
+				{
+					return "No photo capture is running";
+				}
+				break;
+
+			case CommandType::CaptureResume:
+				if (!sequencerResume())
+				{
+					return "Nothing is paused";
+				}
+				break;
+
+			case CommandType::Shutter:
+				if (command.fields & FIELD_ENABLED)
+				{
+					captureSettings.shutterEnabled = command.shutterEnabled;
+					shutterSetEnabled(command.shutterEnabled);
+				}
+				if (command.fields & FIELD_KEY)
+				{
+					captureSettings.shutterKey = command.shutterKey;
+				}
+				queueSettingsSave();
+				break;
+
+			case CommandType::ShutterTest:
+				if (!shutterPress(captureSettings.shutterKey))
+				{
+					return "No phone is connected to the shutter";
+				}
+				break;
+
+			case CommandType::ShutterForget:
+				shutterForgetPhones();
 				break;
 
 			case CommandType::Stop:
@@ -723,6 +1188,8 @@ namespace
 				preset.rpm = settings.rpm;
 				preset.spin = settings.spin;
 				preset.sweep = settings.sweep;
+				preset.photo = captureSettings.photo;
+				preset.video = captureSettings.video;
 				if (presetSave(preset) < 0)
 				{
 					return "All 10 presets are used. Delete one first.";
@@ -740,13 +1207,29 @@ namespace
 					return "That preset was deleted";
 				}
 				settings.rpm = clampFloat(preset->rpm, MIN_RPM, settings.maxRpm);
-				if (preset->mode == JobType::Sweep)
+				switch (preset->mode)
 				{
-					settings.sweep = preset->sweep;
-				}
-				else
-				{
-					settings.spin = preset->spin;
+					case JobType::Sweep:
+						settings.sweep = preset->sweep;
+						break;
+					case JobType::Photo:
+						captureSettings.photo = preset->photo;
+						break;
+					case JobType::Video:
+						// A video brings the spin or sweep it records
+						captureSettings.video = preset->video;
+						if (preset->video.motion == JobType::Sweep)
+						{
+							settings.sweep = preset->sweep;
+						}
+						else
+						{
+							settings.spin = preset->spin;
+						}
+						break;
+					default:
+						settings.spin = preset->spin;
+						break;
 				}
 				sequencerSetSpeed(settings.rpm);
 				queueSettingsSave();
@@ -890,6 +1373,10 @@ void initWebserver()
 	// Join the saved Wi-Fi network, or start setup; also adds the setup page routes
 	networkBegin(server);
 
+	// The Bluetooth shutter shares the radio with Wi-Fi
+	shutterBegin(captureSettings.shutterEnabled);
+	Serial.printf("Free heap: %lu bytes\n", (unsigned long)ESP.getFreeHeap());
+
 	// Configure WebSocket
 	ws.onEvent(onWsEvent);
 	server.addHandler(&ws);
@@ -929,30 +1416,37 @@ void handleCommands()
 	}
 }
 
-// Broadcast the state 10 times a second while the disk moves or a job runs, and once when they stop
+// Broadcast the state 10 times a second while the disk moves or a job runs, once when they
+// stop, and when the shutter connects or disconnects
 void handleStateBroadcast()
 {
 	static unsigned long lastBroadcastMs = 0;
 	static MotionState lastState = MotionState::Idle;
 	static JobType lastJob = JobType::None;
+	static bool lastShutterReady = false;
+	static bool lastShutterConnected = false;
 	if (millis() - lastBroadcastMs >= STATE_INTERVAL_MS)
 	{
 		lastBroadcastMs = millis();
 		const MotionState state = motionStatus().state;
 		const JobType job = sequencerStatus().type;
-		if (state != MotionState::Idle || job != JobType::None || state != lastState || job != lastJob)
+		const ShutterStatus shutter = shutterStatus();
+		if (state != MotionState::Idle || job != JobType::None || state != lastState || job != lastJob
+			|| shutter.ready != lastShutterReady || shutter.connected != lastShutterConnected)
 		{
 			broadcastState();
 		}
 		lastState = state;
 		lastJob = job;
+		lastShutterReady = shutter.ready;
+		lastShutterConnected = shutter.connected;
 	}
 }
 
 // Save settings after an idle delay to minimize flash wear, and presets once they change.
 // Flash writes pause the step timer for a moment, so writes wait while the disk moves to a
 // target, where every step counts. A spin is saved as it runs: a brief hitch there only
-// nudges the dial. A sweep's dwell counts as idle.
+// nudges the dial. A sweep's dwell and a photo's settle count as idle.
 void handleSettingsStorage()
 {
 	const MotionState state = motionStatus().state;

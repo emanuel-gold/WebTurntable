@@ -16,5 +16,6 @@ profiles:
       - ESP Async WebServer (3.12.1)
       - Async TCP (3.5.0)
       - ArduinoJson (7.4.3)
+      - NimBLE-Arduino (2.5.1)
 
 default_profile: esp32

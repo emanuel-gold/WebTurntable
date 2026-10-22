@@ -13,7 +13,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 export const DEFAULT_DATA_DIR = path.resolve(here, '../../code/WebTurntable/data');
 
-// Each protocol module exports createDevice({ broadcast, log }).
+// Each protocol module exports createDevice({ broadcast, log, wifi, restart, shutter }).
 export const PROTOCOLS = {
     v2: protocolV2,
 };
@@ -35,6 +35,7 @@ export async function startMockServer({
     dataDir = DEFAULT_DATA_DIR,
     protocol = 'v2',
     wifi = 'lan',
+    shutter = 'connected',
     log = () => {},
 } = {}) {
     if (!PROTOCOLS[protocol]) {
@@ -45,7 +46,7 @@ export async function startMockServer({
     const broadcast = (text) => clients.forEach((client) => client.send(text));
     // A firmware restart drops every WebSocket, as the real reboot would.
     const restart = () => clients.forEach((client) => client.drop());
-    const device = PROTOCOLS[protocol].createDevice({ broadcast, log, wifi, restart });
+    const device = PROTOCOLS[protocol].createDevice({ broadcast, log, wifi, restart, shutter });
 
     const server = createServer(async (req, res) => {
         const url = req.url;

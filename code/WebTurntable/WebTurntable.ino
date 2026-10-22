@@ -6,6 +6,7 @@
 #include "motion.h"
 #include "sequencer.h"
 #include "server.h"
+#include "shutter.h"
 #include "wireless.h"
 
 void setup()
@@ -28,6 +29,7 @@ void loop()
     handleCommands();
     // After commands, so a sweep with no dwell starts its next leg before storage sees it idle
     handleSequencer();
+    handleShutter();
     handleStateBroadcast();
     handleSettingsStorage();
     handleWebSocketClients();

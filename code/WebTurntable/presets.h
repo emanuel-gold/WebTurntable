@@ -12,10 +12,12 @@ constexpr size_t PRESET_NAME_SIZE = 64;     // UTF-8 bytes, including the termin
 struct Preset
 {
     char name[PRESET_NAME_SIZE];
-    JobType mode;           // Spin or Sweep
+    JobType mode;           // Spin, Sweep, Photo or Video
     float rpm;
-    SpinOptions spin;       // Used when mode is Spin
-    SweepOptions sweep;     // Used when mode is Sweep
+    SpinOptions spin;       // Used by Spin, and by a Video that spins
+    SweepOptions sweep;     // Used by Sweep, and by a Video that sweeps
+    PhotoOptions photo;     // Used by Photo
+    VideoOptions video;     // Used by Video
 };
 
 // Load the saved presets from NVS

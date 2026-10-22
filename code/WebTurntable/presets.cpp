@@ -10,13 +10,27 @@ namespace
     // Presets live in NVS, so firmware and web UI uploads both keep them. One key per slot.
     constexpr char PRESETS_NAMESPACE[] = "presets";
 
-    // What's stored under each slot's key. Bump MAGIC whenever the layout changes.
+    // What's stored under each slot's key. Bump MAGIC whenever the layout changes, and convert
+    // the old layout in loadSlot() so saved presets survive.
     struct StoredPreset
+    {
+        static constexpr uint32_t MAGIC = 0x50525332;   // "PRS2", Phase 4: photo and video
+
+        uint32_t magic;
+        Preset preset;
+    };
+
+    // Phase 3 layout: spin and sweep only
+    struct StoredPresetV1
     {
         static constexpr uint32_t MAGIC = 0x50525331;   // "PRS1"
 
         uint32_t magic;
-        Preset preset;
+        char name[PRESET_NAME_SIZE];
+        JobType mode;
+        float rpm;
+        SpinOptions spin;
+        SweepOptions sweep;
     };
 
     Preferences presetPrefs;
@@ -37,7 +51,9 @@ namespace
     bool sanitize(Preset &preset)
     {
         preset.name[PRESET_NAME_SIZE - 1] = '\0';
-        if (preset.name[0] == '\0' || (preset.mode != JobType::Spin && preset.mode != JobType::Sweep))
+        const bool knownMode = preset.mode == JobType::Spin || preset.mode == JobType::Sweep
+            || preset.mode == JobType::Photo || preset.mode == JobType::Video;
+        if (preset.name[0] == '\0' || !knownMode)
         {
             return false;
         }
@@ -48,7 +64,36 @@ namespace
         preset.rpm = preset.rpm < MIN_RPM ? MIN_RPM : (preset.rpm > MAX_RPM_LIMIT ? MAX_RPM_LIMIT : preset.rpm);
         clampSpinOptions(preset.spin);
         clampSweepOptions(preset.sweep);
+        clampPhotoOptions(preset.photo);
+        clampVideoOptions(preset.video);
         return true;
+    }
+
+    // Read one slot, in the current layout or the Phase 3 one; false if it can't be used
+    bool loadSlot(const char *key, Preset &preset)
+    {
+        const size_t length = presetPrefs.getBytesLength(key);
+        if (length == sizeof(StoredPreset))
+        {
+            StoredPreset stored;
+            presetPrefs.getBytes(key, &stored, sizeof(stored));
+            preset = stored.preset;
+            return stored.magic == StoredPreset::MAGIC && sanitize(preset);
+        }
+        if (length == sizeof(StoredPresetV1))
+        {
+            // Photo and video options start at their defaults; the slot is rewritten when next saved
+            StoredPresetV1 stored;
+            presetPrefs.getBytes(key, &stored, sizeof(stored));
+            preset = Preset();
+            memcpy(preset.name, stored.name, sizeof(preset.name));
+            preset.mode = stored.mode;
+            preset.rpm = stored.rpm;
+            preset.spin = stored.spin;
+            preset.sweep = stored.sweep;
+            return stored.magic == StoredPresetV1::MAGIC && sanitize(preset);
+        }
+        return false;
     }
 }
 
@@ -72,14 +117,11 @@ void presetsBegin()
         {
             continue;
         }
-        StoredPreset stored;
-        const size_t bytesRead = presetPrefs.getBytes(key, &stored, sizeof(stored));
-        if (bytesRead != sizeof(stored) || stored.magic != StoredPreset::MAGIC || !sanitize(stored.preset))
+        if (!loadSlot(key, presets[id]))
         {
             Serial.printf("Preset %u is from another version, ignoring it\n", id);
             continue;
         }
-        presets[id] = stored.preset;
         used[id] = true;
         count++;
     }

@@ -17,11 +17,13 @@ Options:
       --data <dir>      Web UI folder (default code/WebTurntable/data)
       --protocol <v>    Protocol to emulate: ${Object.keys(PROTOCOLS).join(', ')} (default v2)
       --wifi <mode>     Start as a LAN client (lan, default) or in Wi-Fi setup (setup)
+      --shutter <s>     Bluetooth shutter: a phone connected (connected, default) or none
   -h, --help            Show this help
 
 While running, type a command and press Enter:
   state   print the device state
   drop    cut every WebSocket connection, to test UI reconnects
+  shutter connect or disconnect the shutter's phone
   quit    stop the server`;
 
 // Timestamped like a serial monitor line.
@@ -48,6 +50,7 @@ async function main() {
                 data: { type: 'string', default: DEFAULT_DATA_DIR },
                 protocol: { type: 'string', default: 'v2' },
                 wifi: { type: 'string', default: 'lan' },
+                shutter: { type: 'string', default: 'connected' },
                 help: { type: 'boolean', short: 'h', default: false },
             },
         }));
@@ -66,6 +69,7 @@ async function main() {
         dataDir: path.resolve(args.data),
         protocol: args.protocol,
         wifi: args.wifi,
+        shutter: args.shutter,
         log,
     });
 
@@ -73,7 +77,8 @@ async function main() {
     log(`Mock turntable (protocol ${mock.protocol}) serving ${mock.dataDir}`);
     hosts.forEach((h) => log(`  http://${h}:${mock.port}/`));
     log(`Wi-Fi starts in ${args.wifi} mode; the setup page is at /setup`);
-    log('Commands: state, drop, quit');
+    log(`Shutter phone: ${args.shutter}`);
+    log('Commands: state, drop, shutter, quit');
 
     const shutdown = async () => {
         await mock.close();
@@ -90,6 +95,9 @@ async function main() {
             case 'drop':
                 log(`Dropped ${mock.dropClients()} client(s)`);
                 break;
+            case 'shutter':
+                mock.device.setShutterPhone(!mock.device.shutterPhone);
+                break;
             case 'quit':
             case 'exit':
                 shutdown();
@@ -97,7 +105,8 @@ async function main() {
             case '':
                 break;
             default:
-                log('Commands: state, drop, quit');
+                log(`Shutter phone: ${args.shutter}`);
+    log('Commands: state, drop, shutter, quit');
         }
     });
 }

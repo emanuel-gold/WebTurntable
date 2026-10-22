@@ -40,4 +40,10 @@ constexpr uint32_t MAX_SWEEP_CYCLES = 1000;
 constexpr float MAX_SWEEP_DEG = 3600.0f;
 constexpr uint32_t MAX_DWELL_MS = 60000;
 
+// Photo and video capture. Every wait (start delay, settle, after a shot, lead-in, lead-out) is up to a minute.
+constexpr uint16_t MAX_PHOTO_SHOTS = 720;
+constexpr float MIN_PHOTO_STEP_DEG = 0.1f;
+constexpr float MAX_PHOTO_STEP_DEG = 360.0f;
+constexpr uint32_t MAX_WAIT_MS = 60000;
+
 #endif // CONFIG_H

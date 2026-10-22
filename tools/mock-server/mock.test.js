@@ -109,11 +109,18 @@ test('sends the full state and the presets on connect', () => withDevice(async (
     assert.equal(msg.job, null);
     assert.deepEqual(msg.spin, { stopAfter: 'never', stopValue: 1 });
     assert.deepEqual(msg.sweep, { fromDeg: -30, toDeg: 30, dwellMs: 500, stopAfter: 'never', stopValue: 4 });
+    assert.deepEqual(msg.photo, {
+        shots: 36, stepDeg: 10, settleMs: 800, afterMs: 500, dir: 'cw',
+        returnToStart: true, pressShutter: true, delayMs: 5000,
+    });
+    assert.deepEqual(msg.video, { motion: 'spin', dir: 'cw', leadInMs: 1000, leadOutMs: 1000, delayMs: 5000 });
+    assert.deepEqual(msg.shutter, { enabled: true, key: 'volumeUp', connected: true, ready: true });
     assert.deepEqual(msg.settings, { driveMode: 'half', maxRpm: 20, accel: 20 });
     assert.deepEqual(msg.limits, {
         minRpm: 0.5, maxRpm: 20, minAccel: 1, maxAccel: 200,
         minRevs: 0.1, maxRevs: 1000, minMinutes: 0.1, maxMinutes: 600,
         maxCycles: 1000, maxSweepDeg: 3600, maxDwellMs: 60000,
+        maxShots: 720, minStepDeg: 0.1, maxStepDeg: 360, maxWaitMs: 60000,
     });
     assert.deepEqual(await nextPresets(), { type: 'presets', presets: [] });
 }));
@@ -156,9 +163,23 @@ test('rejects bad commands with an error to the sender only', () => withDevice(a
     send({ cmd: 'presetSave', name: 'x'.repeat(64), mode: 'spin' });
     assert.deepEqual(await next(), { type: 'error', msg: 'preset needs a name, up to 63 bytes' });
     send({ cmd: 'presetSave', name: 'Capture', mode: 'capture' });
-    assert.deepEqual(await next(), { type: 'error', msg: 'presetSave needs mode spin or sweep' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'presetSave needs mode spin, sweep, photo or video' });
     send({ cmd: 'presetApply', id: 10 });
     assert.deepEqual(await next(), { type: 'error', msg: 'no preset with that id' });
+    send({ cmd: 'photoOptions', shots: '36' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'shots, stepDeg, settleMs, afterMs and delayMs must be numbers' });
+    send({ cmd: 'photo', dir: 'up' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'dir must be cw or ccw' });
+    send({ cmd: 'photoOptions', returnToStart: 'yes' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'returnToStart and pressShutter must be true or false' });
+    send({ cmd: 'videoOptions', motion: 'photo' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'motion must be spin or sweep' });
+    send({ cmd: 'video', leadInMs: 'soon' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'leadInMs, leadOutMs and delayMs must be numbers' });
+    send({ cmd: 'shutter', enabled: 1 });
+    assert.deepEqual(await next(), { type: 'error', msg: 'enabled must be true or false' });
+    send({ cmd: 'shutter', key: 'enter' });
+    assert.deepEqual(await next(), { type: 'error', msg: 'key must be volumeUp or volumeDown' });
 }));
 
 test('clamps speed to the limits and max speed', () => withDevice(async ({ next, send, waitFor }) => {
@@ -402,6 +423,177 @@ test('saving under an existing name replaces it, and an 11th preset is refused',
 
     send({ cmd: 'presetSave', name: 'Preset 10', mode: 'spin' });
     assert.deepEqual(await waitFor((m) => m.type === 'error'), { type: 'error', msg: 'All 10 presets are used. Delete one first.' });
+}));
+
+// A quick photo or video setup: no start delay, short waits, fast moves.
+async function quickCapture({ send, waitFor }) {
+    send({ cmd: 'settings', accel: 200 });
+    send({ cmd: 'speed', rpm: 20 });
+    await waitFor((m) => isState(m) && m.rpm === 20);
+}
+
+test('takes photos a step apart and returns to the start', () => withDevice(async (client, server) => {
+    const { next, send, waitFor } = client;
+    await next();
+    await quickCapture(client);
+    send({ cmd: 'photo', shots: 4, stepDeg: 90, settleMs: 300, afterMs: 100, delayMs: 300, dir: 'cw' });
+
+    const delay = await waitFor((m) => isState(m) && m.job?.type === 'photo');
+    assert.deepEqual(delay.job, { type: 'photo', stage: 'delay', startsIn: 1, paused: false, shot: 1, shots: 4 });
+
+    // Each shot is taken with the disk still, on its exact angle.
+    for (const [shot, angle] of [[1, 0], [2, 90], [3, 180], [4, 270]]) {
+        const settled = await waitFor((m) => isState(m) && m.job?.stage === 'settle' && m.job.shot === shot, 8000);
+        assert.equal(settled.motion, 'idle');
+        assert.equal(settled.angle, angle);
+    }
+    // After a full turn, the way back is one more step forward.
+    const back = await waitFor((m) => isState(m) && m.job?.stage === 'return' && m.speed !== 0, 8000);
+    assert.ok(back.speed > 0);
+    const done = await waitFor((m) => isState(m) && m.job === null, 8000);
+    assert.equal(done.angle, 0);
+    assert.equal(server.device.shutterPresses, 4);
+}));
+
+test('a photo capture can run without the shutter, and needs a phone when it presses', () => withDevice(async (client, server) => {
+    const { next, send, waitFor } = client;
+    await next();
+    await quickCapture(client);
+    send({ cmd: 'photo', shots: 3, stepDeg: 15, settleMs: 0, afterMs: 0, delayMs: 0, dir: 'ccw', returnToStart: false });
+    assert.deepEqual(await waitFor((m) => m.type === 'error'), {
+        type: 'error', msg: 'No phone is connected to the shutter. Pair it, or turn off Press the shutter.',
+    });
+
+    send({ cmd: 'photo', pressShutter: false });
+    await waitFor((m) => isState(m) && m.job?.type === 'photo');
+    const done = await waitFor((m) => isState(m) && m.job === null, 8000);
+    assert.equal(done.angle, 330, 'two 15 degree steps counter-clockwise, no return');
+    assert.equal(server.device.shutterPresses, 0);
+}, { shutter: 'none' }));
+
+test('pauses a photo capture, and pauses by itself when the phone goes', () => withDevice(async (client, server) => {
+    const { next, send, waitFor } = client;
+    await next();
+    await quickCapture(client);
+    send({ cmd: 'photo', shots: 3, stepDeg: 30, settleMs: 300, afterMs: 200, delayMs: 0 });
+    await waitFor((m) => isState(m) && m.job?.stage === 'settle' && m.job.shot === 2, 8000);
+
+    send({ cmd: 'capturePause' });
+    const paused = await waitFor((m) => isState(m) && m.job?.paused === true);
+    assert.equal(paused.job.shot, 2);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal(server.device.shutterPresses, 1, 'no shot while paused');
+
+    // Resuming settles again, then shoots. With the phone gone, it pauses again instead.
+    server.device.setShutterPhone(false);
+    send({ cmd: 'captureResume' });
+    const waiting = await waitFor((m) => isState(m) && m.job?.needsShutter === true, 3000);
+    assert.equal(waiting.job.paused, true);
+    assert.equal(waiting.job.shot, 2);
+
+    server.device.setShutterPhone(true);
+    send({ cmd: 'captureResume' });
+    await waitFor((m) => isState(m) && m.job === null, 8000);
+    assert.equal(server.device.shutterPresses, 3);
+
+    send({ cmd: 'capturePause' });
+    assert.deepEqual(await waitFor((m) => m.type === 'error'), { type: 'error', msg: 'No photo capture is running' });
+}));
+
+test('records a video: press, lead-in, motion, lead-out, press', () => withDevice(async (client, server) => {
+    const { next, send, waitFor } = client;
+    await next();
+    await quickCapture(client);
+    send({ cmd: 'spinOptions', stopAfter: 'revs', stopValue: 1 });
+    send({ cmd: 'video', motion: 'spin', dir: 'ccw', leadInMs: 300, leadOutMs: 300, delayMs: 200 });
+
+    const delay = await waitFor((m) => isState(m) && m.job?.type === 'video');
+    assert.equal(delay.job.stage, 'delay');
+    assert.equal(server.device.shutterPresses, 0);
+
+    const leadIn = await waitFor((m) => isState(m) && m.job?.stage === 'leadIn');
+    assert.equal(leadIn.motion, 'idle');
+    assert.equal(server.device.shutterPresses, 1, 'recording started');
+
+    const turning = await waitFor((m) => isState(m) && m.job?.stage === 'motion' && m.speed < 0);
+    assert.equal(turning.job.motion, 'spin');
+    assert.ok(turning.job.revsLeft > 0);
+    assert.equal(turning.spinning, false, 'a video is not a spin job');
+
+    const leadOut = await waitFor((m) => isState(m) && m.job?.stage === 'leadOut', 10000);
+    assert.equal(leadOut.angle, 0);
+    assert.equal(server.device.shutterPresses, 1);
+    await waitFor((m) => isState(m) && m.job === null);
+    assert.equal(server.device.shutterPresses, 2, 'recording stopped');
+}));
+
+test('STOP during a video ends the recording, but not before it started', () => withDevice(async (client, server) => {
+    const { next, send, waitFor } = client;
+    await next();
+    await quickCapture(client);
+    send({ cmd: 'sweepOptions', fromDeg: -30, toDeg: 30, dwellMs: 0, stopAfter: 'never' });
+    send({ cmd: 'video', motion: 'sweep', leadInMs: 0, leadOutMs: 0, delayMs: 2000 });
+    await waitFor((m) => isState(m) && m.job?.stage === 'delay');
+    send({ cmd: 'stop' });
+    await waitFor((m) => isState(m) && m.job === null);
+    assert.equal(server.device.shutterPresses, 0);
+
+    // A sweep with no limit records until STOP.
+    send({ cmd: 'video', delayMs: 0 });
+    await waitFor((m) => isState(m) && m.job?.stage === 'motion' && m.job.cycle === 1);
+    assert.equal(server.device.shutterPresses, 1);
+    send({ cmd: 'stop' });
+    await waitFor((m) => isState(m) && m.job === null);
+    assert.equal(server.device.shutterPresses, 2);
+}));
+
+test('tests the shutter, and turns it off and on', () => withDevice(async (client, server) => {
+    const { next, send, waitFor } = client;
+    await next();
+    send({ cmd: 'shutterTest' });
+    await waitFor(isState);
+    assert.equal(server.device.shutterPresses, 1);
+
+    send({ cmd: 'shutter', enabled: false, key: 'volumeDown' });
+    const off = await waitFor((m) => isState(m) && m.shutter.enabled === false);
+    assert.deepEqual(off.shutter, { enabled: false, key: 'volumeDown', connected: false, ready: false });
+    send({ cmd: 'shutterTest' });
+    assert.deepEqual(await waitFor((m) => m.type === 'error'), { type: 'error', msg: 'No phone is connected to the shutter' });
+
+    // The paired phone reconnects once the shutter is back on.
+    send({ cmd: 'shutter', enabled: true });
+    assert.equal((await waitFor((m) => isState(m) && m.shutter.enabled)).shutter.ready, true);
+}));
+
+test('presets save and load photo and video captures', () => withDevice(async ({ next, nextPresets, send, waitFor }) => {
+    await next();
+    await nextPresets();
+    send({ cmd: 'speed', rpm: 4 });
+    send({ cmd: 'photoOptions', shots: 24, stepDeg: 15, delayMs: 3000 });
+    send({ cmd: 'presetSave', name: 'Product 24', mode: 'photo' });
+    assert.deepEqual((await nextPresets()).presets[0], {
+        id: 0, name: 'Product 24', mode: 'photo', rpm: 4, shots: 24, stepDeg: 15, settleMs: 800, afterMs: 500,
+        dir: 'cw', returnToStart: true, pressShutter: true, delayMs: 3000,
+    });
+
+    send({ cmd: 'sweepOptions', fromDeg: -45, toDeg: 45, stopAfter: 'cycles', stopValue: 2 });
+    send({ cmd: 'videoOptions', motion: 'sweep', leadInMs: 2000 });
+    send({ cmd: 'presetSave', name: 'Sweep video', mode: 'video' });
+    assert.deepEqual((await nextPresets()).presets[1], {
+        id: 1, name: 'Sweep video', mode: 'video', rpm: 4, motion: 'sweep', dir: 'cw', leadInMs: 2000,
+        leadOutMs: 1000, delayMs: 5000,
+        sweep: { fromDeg: -45, toDeg: 45, dwellMs: 500, stopAfter: 'cycles', stopValue: 2 },
+    });
+
+    // A video preset brings back the sweep it records.
+    send({ cmd: 'sweepOptions', fromDeg: 0, toDeg: 10 });
+    send({ cmd: 'videoOptions', motion: 'spin', leadInMs: 0 });
+    await waitFor((m) => isState(m) && m.video.motion === 'spin' && m.sweep.toDeg === 10);
+    send({ cmd: 'presetApply', id: 1 });
+    const loaded = await waitFor((m) => isState(m) && m.video.motion === 'sweep');
+    assert.equal(loaded.sweep.fromDeg, -45);
+    assert.equal(loaded.video.leadInMs, 2000);
+    assert.equal(loaded.job, null);
 }));
 
 // Poll the setup page's status endpoint until it matches.

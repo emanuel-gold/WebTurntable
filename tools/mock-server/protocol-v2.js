@@ -2,8 +2,12 @@
 // with a "cmd" field, and a full "state" broadcast after every command and 10 times
 // a second while the disk moves. The motion is simulated with the same ramp logic
 // as code/WebTurntable/motion.cpp, so the UI sees realistic angles and speeds.
-// Jobs (spins with a stop condition, sweeps) follow sequencer.cpp, and presets
-// follow presets.cpp, kept in memory for as long as the mock runs.
+// Jobs (spins with a stop condition, sweeps, photo and video captures) follow
+// sequencer.cpp, and presets follow presets.cpp, kept in memory for as long as the
+// mock runs.
+
+// The Bluetooth shutter (shutter.cpp) is faked: a phone is either connected or not
+// (the `shutter` option, or setShutterPhone()), and presses are counted and logged.
 
 // Wi-Fi setup (wireless.cpp) is emulated too: /api/wifi/* for the setup page, the "wifi"
 // field in the state, and the wifiSetup command. Joining with the password
@@ -26,6 +30,10 @@ const MAX_STOP_MINUTES = 600;
 const MAX_SWEEP_CYCLES = 1000;
 const MAX_SWEEP_DEG = 3600;
 const MAX_DWELL_MS = 60000;
+const MAX_PHOTO_SHOTS = 720;
+const MIN_PHOTO_STEP_DEG = 0.1;
+const MAX_PHOTO_STEP_DEG = 360;
+const MAX_WAIT_MS = 60000;
 
 // From presets.h: 10 slots, and names up to 63 bytes of UTF-8.
 const PRESET_SLOTS = 10;
@@ -55,6 +63,8 @@ const isAbsent = (value) => value === undefined || value === null;
 const round = (value, decimals) => Number(value.toFixed(decimals));
 const degreesToHalfSteps = (deg) => Math.round((deg * HALF_STEPS_PER_REV) / 360);
 const halfStepsToDegrees = (halfSteps) => (halfSteps * 360) / HALF_STEPS_PER_REV;
+// Milliseconds from a JSON number, kept inside [0, high], like toMs() in server.cpp.
+const toMs = (value, high) => (value <= 0 ? 0 : Math.min(Math.round(value), high));
 
 // Move value toward goal by at most step.
 function approach(value, goal, step) {
@@ -103,6 +113,22 @@ function clampSweepOptions(options) {
     }
 }
 
+// Keep photo options inside the limits, like clampPhotoOptions() in sequencer.cpp.
+function clampPhotoOptions(options) {
+    options.shots = clamp(options.shots, 1, MAX_PHOTO_SHOTS);
+    options.stepDeg = clampFinite(options.stepDeg, MIN_PHOTO_STEP_DEG, MAX_PHOTO_STEP_DEG, 10);
+    options.settleMs = Math.min(options.settleMs, MAX_WAIT_MS);
+    options.afterMs = Math.min(options.afterMs, MAX_WAIT_MS);
+    options.delayMs = Math.min(options.delayMs, MAX_WAIT_MS);
+}
+
+// Keep video options inside the limits, like clampVideoOptions() in sequencer.cpp.
+function clampVideoOptions(options) {
+    options.leadInMs = Math.min(options.leadInMs, MAX_WAIT_MS);
+    options.leadOutMs = Math.min(options.leadOutMs, MAX_WAIT_MS);
+    options.delayMs = Math.min(options.delayMs, MAX_WAIT_MS);
+}
+
 const spinJson = (options) => ({ stopAfter: options.stopAfter, stopValue: round(options.stopValue, 2) });
 const sweepJson = (options) => ({
     fromDeg: round(options.fromDeg, 1),
@@ -111,6 +137,8 @@ const sweepJson = (options) => ({
     stopAfter: options.stopAfter,
     stopValue: round(options.stopValue, 2),
 });
+const photoJson = (options) => ({ ...options, stepDeg: round(options.stepDeg, 2) });
+const videoJson = (options) => ({ ...options });
 
 // Read the optional stopAfter and stopValue fields, like parseStopFields() in server.cpp.
 function parseStopFields(msg, countName) {
@@ -130,26 +158,110 @@ function parseStopFields(msg, countName) {
     return { fields };
 }
 
-// Read the optional sweep option fields, like parseSweepFields() in server.cpp.
-function parseSweepFields(msg) {
-    const fields = {};
-    for (const key of ['fromDeg', 'toDeg', 'dwellMs']) {
+// Copy the optional number fields of msg named in keys; false if one isn't a number.
+function readNumbers(msg, keys, fields) {
+    for (const key of keys) {
         if (!isAbsent(msg[key])) {
             if (!isNumber(msg[key])) {
-                return { error: 'fromDeg, toDeg and dwellMs must be numbers' };
+                return false;
             }
             fields[key] = msg[key];
         }
     }
+    return true;
+}
+
+// Read the optional sweep option fields, like parseSweepFields() in server.cpp.
+function parseSweepFields(msg) {
+    const fields = {};
+    if (!readNumbers(msg, ['fromDeg', 'toDeg', 'dwellMs'], fields)) {
+        return { error: 'fromDeg, toDeg and dwellMs must be numbers' };
+    }
     if (fields.dwellMs !== undefined) {
-        fields.dwellMs = fields.dwellMs <= 0 ? 0 : Math.min(Math.round(fields.dwellMs), MAX_DWELL_MS);
+        fields.dwellMs = toMs(fields.dwellMs, MAX_DWELL_MS);
     }
     const stop = parseStopFields(msg, 'cycles');
     return stop.error ? stop : { fields: { ...fields, ...stop.fields } };
 }
 
+// Read the optional photo option fields, like parsePhotoFields() in server.cpp.
+function parsePhotoFields(msg) {
+    const fields = {};
+    if (!readNumbers(msg, ['shots', 'stepDeg', 'settleMs', 'afterMs', 'delayMs'], fields)) {
+        return { error: 'shots, stepDeg, settleMs, afterMs and delayMs must be numbers' };
+    }
+    if (fields.shots !== undefined) {
+        fields.shots = fields.shots <= 1 ? 1 : Math.min(Math.round(fields.shots), MAX_PHOTO_SHOTS);
+    }
+    for (const key of ['settleMs', 'afterMs', 'delayMs']) {
+        if (fields[key] !== undefined) {
+            fields[key] = toMs(fields[key], MAX_WAIT_MS);
+        }
+    }
+    if (!isAbsent(msg.dir)) {
+        if (msg.dir !== 'cw' && msg.dir !== 'ccw') {
+            return { error: 'dir must be cw or ccw' };
+        }
+        fields.dir = msg.dir;
+    }
+    for (const key of ['returnToStart', 'pressShutter']) {
+        if (!isAbsent(msg[key])) {
+            if (typeof msg[key] !== 'boolean') {
+                return { error: 'returnToStart and pressShutter must be true or false' };
+            }
+            fields[key] = msg[key];
+        }
+    }
+    return { fields };
+}
+
+// Read the optional video option fields, like parseVideoFields() in server.cpp.
+function parseVideoFields(msg) {
+    const fields = {};
+    if (!isAbsent(msg.motion)) {
+        if (msg.motion !== 'spin' && msg.motion !== 'sweep') {
+            return { error: 'motion must be spin or sweep' };
+        }
+        fields.motion = msg.motion;
+    }
+    if (!isAbsent(msg.dir)) {
+        if (msg.dir !== 'cw' && msg.dir !== 'ccw') {
+            return { error: 'dir must be cw or ccw' };
+        }
+        fields.dir = msg.dir;
+    }
+    if (!readNumbers(msg, ['leadInMs', 'leadOutMs', 'delayMs'], fields)) {
+        return { error: 'leadInMs, leadOutMs and delayMs must be numbers' };
+    }
+    for (const key of ['leadInMs', 'leadOutMs', 'delayMs']) {
+        if (fields[key] !== undefined) {
+            fields[key] = toMs(fields[key], MAX_WAIT_MS);
+        }
+    }
+    return { fields };
+}
+
+// Read the optional shutter setting fields, like parseShutterFields() in server.cpp.
+function parseShutterFields(msg) {
+    const fields = {};
+    if (!isAbsent(msg.enabled)) {
+        if (typeof msg.enabled !== 'boolean') {
+            return { error: 'enabled must be true or false' };
+        }
+        fields.enabled = msg.enabled;
+    }
+    if (!isAbsent(msg.key)) {
+        if (msg.key !== 'volumeUp' && msg.key !== 'volumeDown') {
+            return { error: 'key must be volumeUp or volumeDown' };
+        }
+        fields.key = msg.key;
+    }
+    return { fields };
+}
+
 // Create a v2 device. broadcast(text) sends to every client; log(line) prints.
-export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restart = () => {} }) {
+// shutter is 'connected' (a paired phone in range) or 'none'.
+export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restart = () => {}, shutter = 'connected' }) {
     const settings = {
         rpm: DEFAULT_RPM,
         dir: 'cw',
@@ -158,6 +270,12 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
         accel: DEFAULT_ACCEL,
         spin: { stopAfter: 'never', stopValue: 1 },
         sweep: { fromDeg: -30, toDeg: 30, dwellMs: 500, stopAfter: 'never', stopValue: 4 },
+        photo: {
+            shots: 36, stepDeg: 10, settleMs: 800, afterMs: 500, dir: 'cw',
+            returnToStart: true, pressShutter: true, delayMs: 5000,
+        },
+        video: { motion: 'spin', dir: 'cw', leadInMs: 1000, leadOutMs: 1000, delayMs: 5000 },
+        shutter: { enabled: true, key: 'volumeUp' },
     };
 
     // Simulated motion engine. Position is in half-steps, positive clockwise.
@@ -185,6 +303,28 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
         dwellStartMs: 0,
     };
 
+    // The capture layer of sequencer.cpp. type is none, photo or video.
+    const cap = {
+        type: 'none',
+        stage: 'delay',
+        stageStartMs: 0,
+        paused: false,
+        needsShutter: false,
+        recording: false,
+        key: 'volumeUp',
+        rpm: DEFAULT_RPM,
+        photo: null,
+        shotIndex: 0,
+        startDeg: 0,
+        video: null,
+        spin: null,
+        sweep: null,
+    };
+
+    // Fake shutter.cpp: a phone in range connects whenever the shutter is enabled.
+    const phone = { nearby: shutter === 'connected', presses: 0 };
+    const shutterConnected = () => settings.shutter.enabled && phone.nearby;
+
     // Emulated presets.cpp: one entry per slot, or null.
     const presets = Array(PRESET_SLOTS).fill(null);
 
@@ -202,19 +342,20 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
 
     const motionStateName = () => ({ run: 'running', move: 'moving', stop: 'stopping' })[motion.mode] ?? 'idle';
     const relativePosition = () => Math.round(motion.position) - motion.zero;
-    const jobType = () => (seq.job === 'spin' || seq.job === 'sweep' ? seq.job : 'none');
+    const jobType = () => {
+        if (cap.type !== 'none') {
+            return cap.type;
+        }
+        return seq.job === 'spin' || seq.job === 'sweep' ? seq.job : 'none';
+    };
 
     function angle() {
         const deg = ((relativePosition() * 360) / HALF_STEPS_PER_REV) % 360;
         return deg < 0 ? deg + 360 : deg;
     }
 
-    // The running spin or sweep and what's left of it, like stateJson() in server.cpp.
-    function jobJson() {
-        if (jobType() === 'none') {
-            return null;
-        }
-        const job = { type: seq.job };
+    // What's left of the motion layer's spin or sweep, like addMotionProgress() in server.cpp.
+    function motionProgress(job) {
         if (seq.job === 'spin' && seq.stopAfter === 'count') {
             job.revsLeft = round(Math.abs(seq.targetPos - relativePosition()) / HALF_STEPS_PER_REV, 2);
         }
@@ -224,9 +365,40 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
                 job.cycles = seq.cycleLimit;
             }
         }
-        if (seq.stopAfter === 'minutes') {
+        if ((seq.job === 'spin' || seq.job === 'sweep') && seq.stopAfter === 'minutes') {
             const elapsed = Date.now() - seq.startMs;
             job.secondsLeft = elapsed >= seq.limitMs ? 0 : Math.ceil((seq.limitMs - elapsed) / 1000);
+        }
+        return job;
+    }
+
+    // The running job and what's left of it, like stateJson() in server.cpp.
+    function jobJson() {
+        const type = jobType();
+        if (type === 'none') {
+            return null;
+        }
+        if (type === 'spin' || type === 'sweep') {
+            return motionProgress({ type });
+        }
+        const job = { type, stage: cap.stage };
+        if (cap.stage === 'delay') {
+            const delayMs = cap.type === 'photo' ? cap.photo.delayMs : cap.video.delayMs;
+            const elapsed = cap.paused ? 0 : Date.now() - cap.stageStartMs;
+            job.startsIn = elapsed >= delayMs ? 0 : Math.ceil((delayMs - elapsed) / 1000);
+        }
+        job.paused = cap.paused;
+        if (cap.needsShutter) {
+            job.needsShutter = true;
+        }
+        if (type === 'photo') {
+            job.shot = Math.min(cap.shotIndex + 1, cap.photo.shots);
+            job.shots = cap.photo.shots;
+        } else {
+            job.motion = cap.video.motion;
+            if (cap.stage === 'motion') {
+                motionProgress(job);
+            }
         }
         return job;
     }
@@ -239,10 +411,18 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
             speed: round((motion.velocity * 60) / HALF_STEPS_PER_REV, 2),
             rpm: round(settings.rpm, 2),
             dir: settings.dir,
-            spinning: seq.job === 'spin',
+            spinning: jobType() === 'spin',
             job: jobJson(),
             spin: spinJson(settings.spin),
             sweep: sweepJson(settings.sweep),
+            photo: photoJson(settings.photo),
+            video: videoJson(settings.video),
+            shutter: {
+                enabled: settings.shutter.enabled,
+                key: settings.shutter.key,
+                connected: shutterConnected(),
+                ready: shutterConnected(),
+            },
             settings: {
                 driveMode: settings.driveMode,
                 maxRpm: round(settings.maxRpm, 1),
@@ -261,8 +441,28 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
                 maxCycles: MAX_SWEEP_CYCLES,
                 maxSweepDeg: MAX_SWEEP_DEG,
                 maxDwellMs: MAX_DWELL_MS,
+                maxShots: MAX_PHOTO_SHOTS,
+                minStepDeg: MIN_PHOTO_STEP_DEG,
+                maxStepDeg: MAX_PHOTO_STEP_DEG,
+                maxWaitMs: MAX_WAIT_MS,
             },
         });
+    }
+
+    // Like presetsJson() in server.cpp: a video brings its spin or sweep, nested.
+    function presetOptionsJson(preset) {
+        switch (preset.mode) {
+            case 'sweep':
+                return sweepJson(preset.sweep);
+            case 'photo':
+                return photoJson(preset.photo);
+            case 'video':
+                return preset.video.motion === 'sweep'
+                    ? { ...videoJson(preset.video), sweep: sweepJson(preset.sweep) }
+                    : { ...videoJson(preset.video), spin: spinJson(preset.spin) };
+            default:
+                return spinJson(preset.spin);
+        }
     }
 
     function presetsJson() {
@@ -271,7 +471,7 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
             name: preset.name,
             mode: preset.mode,
             rpm: round(preset.rpm, 2),
-            ...(preset.mode === 'sweep' ? sweepJson(preset.sweep) : spinJson(preset.spin)),
+            ...presetOptionsJson(preset),
         }]));
         return JSON.stringify({ type: 'presets', presets: list });
     }
@@ -355,10 +555,13 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
     }
 
     function describe() {
-        const { rpm, dir, driveMode, maxRpm, accel, spin, sweep } = settings;
+        const { rpm, dir, driveMode, maxRpm, accel, spin, sweep, photo, video } = settings;
+        const job = jobType();
         return `rpm=${rpm.toFixed(2)}, dir=${dir}, mode=${driveMode}, maxRpm=${maxRpm}, accel=${accel}, ` +
             `spin=${spin.stopAfter} ${spin.stopValue}, sweep=${sweep.fromDeg}..${sweep.toDeg} dwell ${sweep.dwellMs} ` +
-            `${sweep.stopAfter} ${sweep.stopValue}; ${jobType() === 'none' ? '' : `${seq.job} job, `}` +
+            `${sweep.stopAfter} ${sweep.stopValue}, photo=${photo.shots}x${photo.stepDeg}, video=${video.motion}, ` +
+            `shutter=${shutterConnected() ? 'connected' : 'no phone'}; ` +
+            `${job === 'none' ? '' : `${job} job${cap.type !== 'none' ? ` (${cap.stage})` : ''}, `}` +
             `${motionStateName()} at ${angle().toFixed(1)} deg`;
     }
 
@@ -380,6 +583,16 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
         }
         settingsDirty = false;
         log(`Settings saved: ${describe()}`);
+    }
+
+    // Press the fake shutter. Returns false if no phone is ready, like shutterPress().
+    function shutterPress(key) {
+        if (!shutterConnected()) {
+            return false;
+        }
+        phone.presses++;
+        log(`Shutter: ${key === 'volumeDown' ? 'Volume Down' : 'Volume Up'} (press ${phone.presses})`);
+        return true;
     }
 
     function motionRun(rpm, dir) {
@@ -469,7 +682,7 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
         motionMoveTo(seq.moveTargetPos, rpm);
     }
 
-    function sequencerSpin(rpm, dir, options) {
+    function startSpin(rpm, dir, options) {
         const stopAfter = options.stopAfter === 'revs' ? 'count' : options.stopAfter;
         startJob('spin', rpm, stopAfter, options.stopValue);
         seq.spinDir = dir;
@@ -483,16 +696,17 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
         }
     }
 
-    // Returns false if the two ends are the same.
-    function sequencerSweep(rpm, options) {
+    // Where a sweep starting now would turn, or null if both ends are the same half-step.
+    function sweepEnds(options) {
         // The first end is the copy of From nearest the disk, and the other end is To - From beyond it.
         const here = halfStepsToDegrees(relativePosition());
         const fromDeg = here + angleDelta(here, options.fromDeg, 'shortest');
         const fromPos = degreesToHalfSteps(fromDeg);
         const toPos = degreesToHalfSteps(fromDeg + options.toDeg - options.fromDeg);
-        if (fromPos === toPos) {
-            return false;
-        }
+        return fromPos === toPos ? null : { fromPos, toPos };
+    }
+
+    function startSweep(rpm, options, { fromPos, toPos }) {
         const stopAfter = options.stopAfter === 'cycles' ? 'count' : options.stopAfter;
         startJob('sweep', rpm, stopAfter, options.stopValue);
         Object.assign(seq, {
@@ -506,10 +720,181 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
             targetPos: fromPos,
         });
         motionMoveTo(fromPos, rpm);
+    }
+
+    // Drop a capture because something else is starting. A recording video gets a last press.
+    function cancelCapture() {
+        if (cap.type === 'video' && cap.recording) {
+            shutterPress(cap.key);
+            log('Video capture cancelled: stopped the recording');
+        }
+        Object.assign(cap, { type: 'none', recording: false, paused: false });
+    }
+
+    function enterStage(stage) {
+        cap.stage = stage;
+        cap.stageStartMs = Date.now();
+    }
+
+    // Press for a capture; with no phone ready, pause until the user resumes.
+    function pressCaptureShutter() {
+        if (shutterPress(cap.key)) {
+            return true;
+        }
+        log('Capture paused: no phone ready for the shutter');
+        cap.paused = true;
+        cap.needsShutter = true;
+        return false;
+    }
+
+    function finishCapture() {
+        log(cap.type === 'photo' ? 'Photo capture done' : 'Video capture done');
+        Object.assign(cap, { type: 'none', paused: false });
+    }
+
+    function beginCapture(type, rpm, key) {
+        cancelCapture();
+        seq.job = 'none';
+        motionStop();
+        Object.assign(cap, {
+            type, rpm, key, paused: false, needsShutter: false, recording: false, shotIndex: 0,
+        });
+        enterStage('delay');
+    }
+
+    // Advance a photo capture, like stepPhoto() in sequencer.cpp.
+    function stepPhoto(motionDone, elapsed) {
+        const photo = cap.photo;
+        switch (cap.stage) {
+            case 'delay':
+                if (cap.paused || !motionDone || elapsed < photo.delayMs) {
+                    return;
+                }
+                cap.startDeg = halfStepsToDegrees(relativePosition());
+                enterStage('settle');
+                break;
+            case 'move':
+                if (motionDone) {
+                    enterStage('settle');
+                }
+                break;
+            case 'settle':
+                if (cap.paused || elapsed < photo.settleMs) {
+                    return;
+                }
+                if (photo.pressShutter && !pressCaptureShutter()) {
+                    return;
+                }
+                enterStage('shot');
+                break;
+            case 'shot':
+                if (cap.paused || elapsed < photo.afterMs) {
+                    return;
+                }
+                cap.shotIndex++;
+                if (cap.shotIndex < photo.shots) {
+                    const sign = photo.dir === 'cw' ? 1 : -1;
+                    startMove(cap.startDeg + sign * cap.shotIndex * photo.stepDeg, cap.rpm);
+                    enterStage('move');
+                } else if (photo.returnToStart) {
+                    const here = halfStepsToDegrees(relativePosition());
+                    startMove(here + angleDelta(here, cap.startDeg, 'shortest'), cap.rpm);
+                    enterStage('return');
+                } else {
+                    finishCapture();
+                }
+                break;
+            case 'return':
+                if (motionDone) {
+                    finishCapture();
+                }
+                break;
+        }
+    }
+
+    // Advance a video capture, like stepVideo() in sequencer.cpp.
+    function stepVideo(motionDone, elapsed) {
+        const video = cap.video;
+        switch (cap.stage) {
+            case 'delay':
+                if (cap.paused || !motionDone || elapsed < video.delayMs || !pressCaptureShutter()) {
+                    return;
+                }
+                cap.recording = true;
+                enterStage('leadIn');
+                break;
+            case 'leadIn': {
+                if (elapsed < video.leadInMs) {
+                    return;
+                }
+                if (video.motion === 'sweep') {
+                    const ends = sweepEnds(cap.sweep);
+                    if (ends) {
+                        startSweep(cap.rpm, cap.sweep, ends);
+                    }
+                } else {
+                    startSpin(cap.rpm, video.dir, cap.spin);
+                }
+                enterStage('motion');
+                break;
+            }
+            case 'motion':
+                if (motionDone) {
+                    enterStage('leadOut');
+                }
+                break;
+            case 'leadOut':
+                if (elapsed < video.leadOutMs) {
+                    return;
+                }
+                shutterPress(cap.key);
+                cap.recording = false;
+                finishCapture();
+                break;
+        }
+    }
+
+    function sequencerSpin(rpm, dir, options) {
+        cancelCapture();
+        startSpin(rpm, dir, options);
+    }
+
+    // Returns false if the two ends are the same.
+    function sequencerSweep(rpm, options) {
+        const ends = sweepEnds(options);
+        if (!ends) {
+            return false;
+        }
+        cancelCapture();
+        startSweep(rpm, options, ends);
         return true;
     }
 
+    // Returns an error, or null.
+    function sequencerPhoto(rpm, options, key) {
+        if (options.pressShutter && !shutterConnected()) {
+            return 'No phone is connected to the shutter. Pair it, or turn off Press the shutter.';
+        }
+        beginCapture('photo', rpm, key);
+        cap.photo = { ...options };
+        return null;
+    }
+
+    // Returns an error, or null.
+    function sequencerVideo(rpm, options, spin, sweep, key) {
+        if (!shutterConnected()) {
+            return 'No phone is connected to the shutter';
+        }
+        if (options.motion === 'sweep' && !sweepEnds(sweep)) {
+            return 'From and To must be different angles';
+        }
+        beginCapture('video', rpm, key);
+        Object.assign(cap, { video: { ...options }, spin: { ...spin }, sweep: { ...sweep } });
+        return null;
+    }
+
     function sequencerMoveBy(deg, rpm) {
+        cancelCapture();
         // Build on the last target while that move is unfinished, or the disk still sits on it.
         const onLastTarget = (seq.job === 'move' && motionStateName() === 'moving')
             || relativePosition() === seq.moveTargetPos;
@@ -517,6 +902,7 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
     }
 
     function sequencerMoveTo(deg, dir, rpm) {
+        cancelCapture();
         const here = halfStepsToDegrees(relativePosition());
         startMove(here + angleDelta(here, deg, dir), rpm);
     }
@@ -524,6 +910,7 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
     // Change the speed of whatever is running.
     function sequencerSetSpeed(rpm) {
         seq.rpm = rpm;
+        cap.rpm = rpm;
         if (seq.job === 'move') {
             motionMoveTo(seq.moveTargetPos, rpm);
         } else if (seq.job === 'spin' && seq.stopAfter === 'count') {
@@ -537,11 +924,13 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
     }
 
     function sequencerStop() {
+        cancelCapture();
         seq.job = 'none';
         motionStop();
     }
 
     function sequencerHalt() {
+        cancelCapture();
         seq.job = 'none';
         motionHalt();
     }
@@ -555,6 +944,7 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
         seq.toPos -= shift;
         seq.moveTargetPos -= shift;
         seq.moveTargetDeg -= halfStepsToDegrees(shift);
+        cap.startDeg -= halfStepsToDegrees(shift);
     }
 
     // Advance a sweep: arrive at an end, dwell, then head for the other end.
@@ -609,11 +999,23 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
                 stepSweep(state, timeUp);
                 break;
         }
+
+        if (cap.type === 'none') {
+            return;
+        }
+        const motionDone = seq.job === 'none' && motionStateName() === 'idle';
+        const elapsed = Date.now() - cap.stageStartMs;
+        if (cap.type === 'photo') {
+            stepPhoto(motionDone, elapsed);
+        } else {
+            stepVideo(motionDone, elapsed);
+        }
     }
 
     // Validate a message the way parseCommand() in server.cpp does.
     function parseCommand(msg) {
         const { cmd } = msg ?? {};
+        const rpm = isNumber(msg?.rpm) ? msg.rpm : undefined;
         switch (cmd) {
             case 'speed':
                 return isNumber(msg.rpm) ? { cmd, rpm: msg.rpm } : { error: 'speed needs a number rpm' };
@@ -622,24 +1024,39 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
                     return { error: 'run needs dir cw or ccw' };
                 }
                 const stop = parseStopFields(msg, 'revs');
-                return stop.error ? stop : { cmd, dir: msg.dir, rpm: isNumber(msg.rpm) ? msg.rpm : undefined, spin: stop.fields };
-            }
-            case 'sweep': {
-                const sweep = parseSweepFields(msg);
-                return sweep.error ? sweep : { cmd, rpm: isNumber(msg.rpm) ? msg.rpm : undefined, sweep: sweep.fields };
+                return stop.error ? stop : { cmd, dir: msg.dir, rpm, fields: stop.fields };
             }
             case 'spinOptions': {
                 const stop = parseStopFields(msg, 'revs');
-                return stop.error ? stop : { cmd, spin: stop.fields };
+                return stop.error ? stop : { cmd, fields: stop.fields };
             }
+            case 'sweep':
             case 'sweepOptions': {
                 const sweep = parseSweepFields(msg);
-                return sweep.error ? sweep : { cmd, sweep: sweep.fields };
+                return sweep.error ? sweep : { cmd, rpm, fields: sweep.fields };
+            }
+            case 'photo':
+            case 'photoOptions': {
+                const photo = parsePhotoFields(msg);
+                return photo.error ? photo : { cmd, rpm, fields: photo.fields };
+            }
+            case 'video':
+            case 'videoOptions': {
+                const video = parseVideoFields(msg);
+                return video.error ? video : { cmd, rpm, fields: video.fields };
+            }
+            case 'shutter': {
+                const shutterFields = parseShutterFields(msg);
+                return shutterFields.error ? shutterFields : { cmd, fields: shutterFields.fields };
             }
             case 'stop':
             case 'halt':
             case 'setZero':
             case 'wifiSetup':
+            case 'capturePause':
+            case 'captureResume':
+            case 'shutterTest':
+            case 'shutterForget':
                 return { cmd };
             case 'moveBy':
             case 'moveTo': {
@@ -657,8 +1074,8 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
                 if (name.length === 0 || Buffer.byteLength(name) > PRESET_NAME_BYTES) {
                     return { error: 'preset needs a name, up to 63 bytes' };
                 }
-                if (msg.mode !== 'spin' && msg.mode !== 'sweep') {
-                    return { error: 'presetSave needs mode spin or sweep' };
+                if (!['spin', 'sweep', 'photo', 'video'].includes(msg.mode)) {
+                    return { error: 'presetSave needs mode spin, sweep, photo or video' };
                 }
                 return { cmd, name, mode: msg.mode };
             }
@@ -683,18 +1100,20 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
         }
     }
 
-    function applySpinFields(fields) {
-        Object.assign(settings.spin, fields);
-        clampSpinOptions(settings.spin);
+    // Take an rpm a start command carries as the new speed setting.
+    function applyRpm(command) {
+        if (command.rpm !== undefined) {
+            settings.rpm = clamp(command.rpm, MIN_RPM, settings.maxRpm);
+        }
     }
 
-    function applySweepFields(fields) {
-        Object.assign(settings.sweep, fields);
-        clampSweepOptions(settings.sweep);
+    function applyFields(options, fields, clampOptions) {
+        Object.assign(options, fields);
+        clampOptions(options);
     }
 
     // Run one command, the same way executeCommand() in server.cpp does.
-    // Returns an error for the sender, or null.
+    // Returns an error for the sender, { presetsChanged: true }, or null.
     function execute(command) {
         switch (command.cmd) {
             case 'speed':
@@ -703,31 +1122,71 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
                 queueSettingsSave();
                 break;
             case 'run':
-                if (command.rpm !== undefined) {
-                    settings.rpm = clamp(command.rpm, MIN_RPM, settings.maxRpm);
-                }
+                applyRpm(command);
                 settings.dir = command.dir;
-                applySpinFields(command.spin);
+                applyFields(settings.spin, command.fields, clampSpinOptions);
                 queueSettingsSave();
                 sequencerSpin(settings.rpm, settings.dir, settings.spin);
                 break;
             case 'spinOptions':
-                applySpinFields(command.spin);
+                applyFields(settings.spin, command.fields, clampSpinOptions);
                 queueSettingsSave();
                 break;
             case 'sweepOptions':
-                applySweepFields(command.sweep);
+                applyFields(settings.sweep, command.fields, clampSweepOptions);
                 queueSettingsSave();
                 break;
             case 'sweep':
-                if (command.rpm !== undefined) {
-                    settings.rpm = clamp(command.rpm, MIN_RPM, settings.maxRpm);
-                }
-                applySweepFields(command.sweep);
+                applyRpm(command);
+                applyFields(settings.sweep, command.fields, clampSweepOptions);
                 queueSettingsSave();
                 if (!sequencerSweep(settings.rpm, settings.sweep)) {
                     return 'From and To must be different angles';
                 }
+                break;
+            case 'photoOptions':
+                applyFields(settings.photo, command.fields, clampPhotoOptions);
+                queueSettingsSave();
+                break;
+            case 'photo':
+                applyRpm(command);
+                applyFields(settings.photo, command.fields, clampPhotoOptions);
+                queueSettingsSave();
+                return sequencerPhoto(settings.rpm, settings.photo, settings.shutter.key);
+            case 'videoOptions':
+                applyFields(settings.video, command.fields, clampVideoOptions);
+                queueSettingsSave();
+                break;
+            case 'video':
+                applyRpm(command);
+                applyFields(settings.video, command.fields, clampVideoOptions);
+                queueSettingsSave();
+                return sequencerVideo(settings.rpm, settings.video, settings.spin, settings.sweep, settings.shutter.key);
+            case 'capturePause':
+                if (cap.type !== 'photo') {
+                    return 'No photo capture is running';
+                }
+                cap.paused = true;
+                break;
+            case 'captureResume':
+                if (cap.type === 'none' || !cap.paused) {
+                    return 'Nothing is paused';
+                }
+                // Start the stage's wait over: the disk settles again, and the start delay runs again.
+                Object.assign(cap, { paused: false, needsShutter: false, stageStartMs: Date.now() });
+                break;
+            case 'shutter':
+                Object.assign(settings.shutter, command.fields);
+                queueSettingsSave();
+                break;
+            case 'shutterTest':
+                if (!shutterPress(settings.shutter.key)) {
+                    return 'No phone is connected to the shutter';
+                }
+                break;
+            case 'shutterForget':
+                phone.nearby = false;
+                log('Shutter: forgot all paired phones');
                 break;
             case 'stop':
                 sequencerStop();
@@ -759,6 +1218,8 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
                     rpm: settings.rpm,
                     spin: { ...settings.spin },
                     sweep: { ...settings.sweep },
+                    photo: { ...settings.photo },
+                    video: { ...settings.video },
                 };
                 log(`Preset ${slot} saved: ${command.name}`);
                 return { presetsChanged: true };
@@ -772,6 +1233,16 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
                 settings.rpm = clamp(preset.rpm, MIN_RPM, settings.maxRpm);
                 if (preset.mode === 'sweep') {
                     settings.sweep = { ...preset.sweep };
+                } else if (preset.mode === 'photo') {
+                    settings.photo = { ...preset.photo };
+                } else if (preset.mode === 'video') {
+                    // A video brings the spin or sweep it records.
+                    settings.video = { ...preset.video };
+                    if (preset.video.motion === 'sweep') {
+                        settings.sweep = { ...preset.sweep };
+                    } else {
+                        settings.spin = { ...preset.spin };
+                    }
                 } else {
                     settings.spin = { ...preset.spin };
                 }
@@ -874,6 +1345,18 @@ export function createDevice({ broadcast, log, wifi: initialWifi = 'lan', restar
         },
         describe,
         handleHttp,
+        // A paired phone comes into range (true) or leaves (false), like the real shutter connecting.
+        setShutterPhone(nearby) {
+            phone.nearby = nearby;
+            log(`Shutter: phone ${shutterConnected() ? 'connected' : 'disconnected'}`);
+            broadcast(stateJson());
+        },
+        get shutterPhone() {
+            return phone.nearby;
+        },
+        get shutterPresses() {
+            return phone.presses;
+        },
         close() {
             clearInterval(timer);
             clearTimeout(saveTimer);
