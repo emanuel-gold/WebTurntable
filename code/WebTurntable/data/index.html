@@ -13,7 +13,10 @@
     <body>
         <header>
             <h1>Turntable</h1>
-            <span id="connection" class="pill offline">Connecting…</span>
+            <div class="pills">
+                <span id="shutter-pill" class="pill off" hidden>Shutter</span>
+                <span id="connection" class="pill offline">Connecting…</span>
+            </div>
         </header>
 
         <main>
@@ -39,6 +42,8 @@
                 <div class="segmented tabs" role="tablist" aria-label="Mode">
                     <button id="tab-spin" role="tab" data-tab="spin" aria-controls="panel-spin">Spin</button>
                     <button id="tab-sweep" role="tab" data-tab="sweep" aria-controls="panel-sweep">Sweep</button>
+                    <button id="tab-photo" role="tab" data-tab="photo" aria-controls="panel-photo">Photo</button>
+                    <button id="tab-video" role="tab" data-tab="video" aria-controls="panel-video">Video</button>
                 </div>
                 <label class="slider-label" for="rpm">
                     <span>Speed</span>
@@ -91,12 +96,96 @@
                     <button id="sweep-start" class="big wide">Start sweep</button>
                     <p class="hint">Angles count from zero, so −30 to 30 swings around it. A cycle goes there and back; a timed sweep stops at the next end.</p>
                 </div>
+
+                <div id="panel-photo" role="tabpanel" aria-labelledby="tab-photo" hidden>
+                    <div class="field-row">
+                        <span class="label">Shutter</span>
+                        <span class="value shutter-status">–</span>
+                        <button class="shutter-test">Test</button>
+                    </div>
+                    <div class="field-row">
+                        <label for="photo-shots">Shots</label>
+                        <input id="photo-shots" type="number" inputmode="numeric" step="1" min="1">
+                        <label for="photo-step" class="inline">every</label>
+                        <input id="photo-step" type="number" inputmode="decimal" step="any">
+                        <span class="unit">°</span>
+                    </div>
+                    <p id="photo-summary" class="hint">–</p>
+                    <div class="field-row">
+                        <label for="photo-settle">Settle before each shot</label>
+                        <input id="photo-settle" type="number" inputmode="decimal" step="any" min="0">
+                        <span class="unit">s</span>
+                    </div>
+                    <div class="field-row">
+                        <label for="photo-after">Wait after each shot</label>
+                        <input id="photo-after" type="number" inputmode="decimal" step="any" min="0">
+                        <span class="unit">s</span>
+                    </div>
+                    <div class="field-row">
+                        <span class="label">Direction</span>
+                        <div class="segmented" role="radiogroup" aria-label="Photo direction">
+                            <button data-photo-dir="cw" role="radio">CW</button>
+                            <button data-photo-dir="ccw" role="radio">CCW</button>
+                        </div>
+                    </div>
+                    <label class="check"><input id="photo-return" type="checkbox"> Return to the start afterwards</label>
+                    <label class="check"><input id="photo-press" type="checkbox"> Press the shutter (off for a dry run)</label>
+                    <div class="field-row">
+                        <label for="photo-delay">Delay before the first shot</label>
+                        <input id="photo-delay" type="number" inputmode="decimal" step="any" min="0">
+                        <span class="unit">s</span>
+                    </div>
+                    <p id="photo-estimate" class="hint">–</p>
+                    <button id="photo-start" class="big wide">Start photos</button>
+                    <p class="hint">The delay gives you time to open the camera. While it runs, the button pauses before the next shot; STOP cancels.</p>
+                </div>
+
+                <div id="panel-video" role="tabpanel" aria-labelledby="tab-video" hidden>
+                    <div class="field-row">
+                        <span class="label">Shutter</span>
+                        <span class="value shutter-status">–</span>
+                        <button class="shutter-test">Test</button>
+                    </div>
+                    <div class="field-row">
+                        <label for="video-motion">Motion</label>
+                        <select id="video-motion">
+                            <option value="spin">Spin</option>
+                            <option value="sweep">Sweep</option>
+                        </select>
+                    </div>
+                    <div id="video-dir-row" class="field-row">
+                        <span class="label">Direction</span>
+                        <div class="segmented" role="radiogroup" aria-label="Video spin direction">
+                            <button data-video-dir="cw" role="radio">CW</button>
+                            <button data-video-dir="ccw" role="radio">CCW</button>
+                        </div>
+                    </div>
+                    <p id="video-summary" class="hint">–</p>
+                    <div class="field-row">
+                        <label for="video-lead-in">Record before the motion</label>
+                        <input id="video-lead-in" type="number" inputmode="decimal" step="any" min="0">
+                        <span class="unit">s</span>
+                    </div>
+                    <div class="field-row">
+                        <label for="video-lead-out">Record after it</label>
+                        <input id="video-lead-out" type="number" inputmode="decimal" step="any" min="0">
+                        <span class="unit">s</span>
+                    </div>
+                    <div class="field-row">
+                        <label for="video-delay">Delay before recording</label>
+                        <input id="video-delay" type="number" inputmode="decimal" step="any" min="0">
+                        <span class="unit">s</span>
+                    </div>
+                    <p id="video-estimate" class="hint">–</p>
+                    <button id="video-start" class="big wide">Start video</button>
+                    <p class="hint">Put the camera in Video mode. The turntable presses the shutter to start recording and again to stop. STOP also stops the recording.</p>
+                </div>
             </section>
 
             <section class="card" aria-labelledby="presets-title">
                 <h2 id="presets-title">Presets</h2>
                 <ul id="preset-list" class="preset-list"></ul>
-                <p id="presets-empty" class="hint">No presets yet. Set up a spin or sweep, then save it here.</p>
+                <p id="presets-empty" class="hint">No presets yet. Set up a spin, sweep, photo or video, then save it here.</p>
                 <form id="preset-save" class="field-row">
                     <input id="preset-name" type="text" maxlength="24" placeholder="Name" aria-label="Preset name" autocomplete="off" enterkeyhint="done">
                     <button id="preset-save-button" type="submit">Save spin</button>
@@ -155,6 +244,27 @@
                     <input id="max-rpm" type="number" inputmode="decimal" step="any" min="0.5" max="20">
                     <span class="unit">RPM</span>
                 </div>
+                <div class="field-row">
+                    <span class="label">Bluetooth shutter</span>
+                    <div class="segmented" role="radiogroup" aria-label="Bluetooth shutter">
+                        <button data-shutter-enabled="true" role="radio">On</button>
+                        <button data-shutter-enabled="false" role="radio">Off</button>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <label for="shutter-key">Shutter key</label>
+                    <select id="shutter-key">
+                        <option value="volumeUp">Volume up</option>
+                        <option value="volumeDown">Volume down</option>
+                    </select>
+                </div>
+                <div class="field-row">
+                    <span class="label">Phone</span>
+                    <span class="value shutter-status">–</span>
+                    <button class="shutter-test">Test</button>
+                </div>
+                <button id="shutter-forget" class="wide">Forget paired phones</button>
+                <p class="hint">To pair, open Settings → Bluetooth on the phone and tap Turntable Shutter. To switch phones, tap Forget paired phones here, and Forget This Device on the old phone.</p>
                 <div class="field-row">
                     <span class="label">Wi-Fi</span>
                     <span id="wifi-info" class="value">–</span>
